@@ -19,8 +19,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        flatDir { dirs("libs") }
+
     }
 }
 
 rootProject.name = "NexGo integration"
 include(":app")
+
