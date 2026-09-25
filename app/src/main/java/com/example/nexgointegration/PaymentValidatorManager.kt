@@ -4,7 +4,7 @@ import android.content.Context
 import com.magellan.tapandgo.validatorsdk.T2UOpenPaymentSDK
 import com.magellan.tapandgo.validatorsdk.ValidationSdkConfiguration
 
-class PaymentManager(context: Context) {
+class PaymentValidatorManager(context: Context) {
 
     // Configuration du SDK Magellan
 

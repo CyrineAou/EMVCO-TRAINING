@@ -6,28 +6,31 @@
     android:orientation="vertical"
     android:padding="16dp">
 
+
+
     <TextView
         android:id="@+id/statusTextView"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textSize="18sp"
-        android:layout_marginBottom="16dp"
-        android:text="En attente..." />
+        android:text="Terminal prêt" />
 
-    <TextView
-        android:id="@+id/pinTextView"
-        android:layout_width="wrap_content"
+    <EditText
+        android:id="@+id/amountTextView"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textSize="18sp"
-        android:layout_marginBottom="16dp"
-        android:text="En attente..." />
-
-
+        android:hint="Montant en cents"
+        android:inputType="number" />
 
     <Button
-        android:id="@+id/btnLireCarte"
-        android:layout_width="wrap_content"
+        android:id="@+id/startPaymentButton"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Simuler la lecture de carte" />
+        android:text="PAYER" />
+
+    <Button
+        android:id="@+id/cancelPaymentButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="ANNULER" />
 
 </LinearLayout>
