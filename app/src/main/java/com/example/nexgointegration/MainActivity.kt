@@ -363,7 +363,8 @@ import android.util.Log
 import android.widget.Button
 import android.widget.TextView
 import androidx.activity.ComponentActivity
-import com.example.nexgointegration.getway.PaymentGatewayImpl
+import com.example.nexgointegration.gateway.FakePaymentGateway
+import com.example.nexgointegration.gateway.PaymentGatewayImpl
 import com.nexgo.oaf.apiv3.device.reader.CardInfoEntity
 import com.nexgo.oaf.apiv3.emv.EmvProcessResultEntity
 
@@ -397,7 +398,7 @@ class MainActivity : ComponentActivity() {
 
         log("UI initialized")
 
-        val gateway = PaymentGatewayImpl()
+        val gateway = FakePaymentGateway()
         paymentManager = PaymentManager(
             context = this,
             paymentGateway = gateway,
@@ -509,46 +510,79 @@ class MainActivity : ComponentActivity() {
 
         log("[INIT] PaymentManager initialized")
 
-        startButton.setOnClickListener {
+//        startButton.setOnClickListener {
+//
+//            log("==================================================")
+//            log("[START] PAYMENT BUTTON CLICKED")
+//            log("==================================================")
+//
+//            val amount = amountTextView.text
+//                .toString()
+//                .trim()
+//
+//            log("[START] Amount entered = '$amount'")
+//
+//            if (amount.isEmpty()) {
+//
+//                log("[START] ERROR: Amount is empty")
+//
+//                updateStatus(
+//                    "Veuillez saisir un montant"
+//                )
+//
+//                return@setOnClickListener
+//            }
+//
+//            log("[START] Starting payment")
+//            log("[START] Amount = $amount")
+//
+//            startButton.isEnabled = false
+//            cancelButton.isEnabled = true
+//
+//            try {
+//
+//                paymentManager.startPayment(amount)
+//
+//                log("[START] paymentManager.startPayment() called")
+//
+//            } catch (e: Exception) {
+//
+//                Log.e(
+//                    TAG,
+//                    "[START] Exception while starting payment",
+//                    e
+//                )
+//
+//                startButton.isEnabled = true
+//                cancelButton.isEnabled = false
+//
+//                updateStatus(
+//                    "Erreur démarrage : ${e.message}"
+//                )
+//            }
+//        }
 
-            log("==================================================")
-            log("[START] PAYMENT BUTTON CLICKED")
-            log("==================================================")
+        startButton.setOnClickListener {
 
             val amount = amountTextView.text
                 .toString()
                 .trim()
 
-            log("[START] Amount entered = '$amount'")
-
             if (amount.isEmpty()) {
-
-                log("[START] ERROR: Amount is empty")
-
-                updateStatus(
-                    "Veuillez saisir un montant"
-                )
-
+                updateStatus("Veuillez saisir un montant")
                 return@setOnClickListener
             }
-
-            log("[START] Starting payment")
-            log("[START] Amount = $amount")
 
             startButton.isEnabled = false
             cancelButton.isEnabled = true
 
             try {
-
                 paymentManager.startPayment(amount)
-
-                log("[START] paymentManager.startPayment() called")
-
             } catch (e: Exception) {
 
                 Log.e(
                     TAG,
-                    "[START] Exception while starting payment",
+                    "Erreur démarrage paiement",
                     e
                 )
 

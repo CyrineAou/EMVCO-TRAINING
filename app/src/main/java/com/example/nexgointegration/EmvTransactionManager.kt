@@ -2,7 +2,7 @@ package com.example.nexgointegration
 
 import android.content.Context
 import android.util.Log
-import com.example.nexgointegration.getway.PaymentGateway
+import com.example.nexgointegration.gateway.PaymentGateway
 import com.nexgo.common.LogUtils
 import com.nexgo.libpboc.ByteUtils
 import com.nexgo.oaf.apiv3.DeviceEngine
