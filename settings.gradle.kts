@@ -26,4 +26,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "NexGo integration"
 include(":app")
-
+include(":worldlineintegrationsdk")
+include(":terminalmodule")

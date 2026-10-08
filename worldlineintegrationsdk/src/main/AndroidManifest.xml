@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.CLOUDPOS_PRINTER" />
     <uses-permission android:name="android.permission.CLOUDPOS_CARD_STAT" />
     <uses-permission android:name="android.permission.CLOUDPOS_CONTACTLESS_CARD" />
@@ -8,6 +9,9 @@
     <uses-permission android:name="android.permission.CLOUDPOS_IC_CARD" />
     <uses-permission android:name="android.permission.CLOUDPOS_PINPAD" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.MANAGE_INTERNAL_STORAGE" />
+
 
     <application
         android:allowBackup="true"
@@ -16,6 +20,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.NexGoIntegration">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -24,10 +29,20 @@
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Désactive ProfileInstaller (crash : ListenableFuture absente de l'APK) -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+                tools:node="remove" />
+        </provider>
     </application>
 
 </manifest>
