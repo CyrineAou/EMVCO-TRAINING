@@ -1,10 +1,13 @@
-package com.example.terminalmodule.pax.internal
+package com.example.terminalmodule.internal
 
 import com.example.terminalmodule.api.PrinterService
-import com.example.terminalmodule.internal.terminalCall
 import com.example.terminalmodule.model.FontSize
 import com.example.terminalmodule.model.PrintLine
 import com.example.terminalmodule.model.TerminalResult
+import com.pax.dal.IDAL
+import com.pax.dal.IPrinter
+import com.pax.dal.entity.EFontTypeAscii
+import com.pax.dal.entity.EFontTypeExtCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

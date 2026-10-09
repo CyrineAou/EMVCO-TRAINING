@@ -1,13 +1,12 @@
-package com.example.terminalmodule.pax.internal
+package com.example.terminalmodule.internal
 
 import com.example.terminalmodule.api.CardReaderService
-import com.example.terminalmodule.internal.Track2Parser
-import com.example.terminalmodule.internal.awaitCallback
-import com.example.terminalmodule.internal.terminalCall
-import com.example.terminalmodule.internal.toCardData
 import com.example.terminalmodule.model.CardData
 import com.example.terminalmodule.model.TerminalError
 import com.example.terminalmodule.model.TerminalResult
+import com.pax.dal.ICardReaderHelper
+import com.pax.dal.IDAL
+import com.pax.dal.entity.EReaderType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

@@ -27,5 +27,5 @@ internal object PanMasker {
         else pan.take(6) + "*".repeat(pan.length - 10) + pan.takeLast(4)
 }
 
-internal fun Track2.toCardData(mode: EntryMode = EntryMode.SWIPE) =
-    CardData(PanMasker.mask(pan), expiryMmYy, holderName = null, entryMode = mode)
+internal fun Track2.toCardData(mode: EntryMode = EntryMode.CONTACTLESS) =
+    CardData(PanMasker.mask(pan), expiryMmYy, holderName = null, entryMode = mode,   sessionId = CardSessionStore.put(pan),)

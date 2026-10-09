@@ -6,6 +6,7 @@ data class CardData(
     val expiry: String?,
     val holderName: String?,
     val entryMode: EntryMode,
+    val sessionId: String? = null,
 )
 
 enum class EntryMode { SWIPE, CHIP, CONTACTLESS }

@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
 
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+
     <uses-permission android:name="android.permission.CLOUDPOS_PRINTER" />
     <uses-permission android:name="android.permission.CLOUDPOS_CARD_STAT" />
     <uses-permission android:name="android.permission.CLOUDPOS_CONTACTLESS_CARD" />
@@ -9,6 +13,7 @@
     <uses-permission android:name="android.permission.CLOUDPOS_IC_CARD" />
     <uses-permission android:name="android.permission.CLOUDPOS_PINPAD" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <application
         android:allowBackup="true"
@@ -17,19 +22,14 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.NexGoIntegration">
-
         <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:theme="@style/Theme.NexGoIntegration"
-            android:windowSoftInputMode="adjustResize">
-
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-
-        </activity>
+        android:name=".MainActivity"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+    </activity>
 
     </application>
 

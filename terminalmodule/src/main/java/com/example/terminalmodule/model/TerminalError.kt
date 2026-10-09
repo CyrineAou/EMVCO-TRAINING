@@ -14,4 +14,9 @@ sealed interface TerminalError {
     data class Unexpected(val cause: Throwable) : TerminalError {
         override val message: String get() = cause.message ?: "Erreur inattendue"
     }
+    data class InvalidKey(override val message: String) : TerminalError
+    data object KeyCheckMismatch : TerminalError { override val message = "KCV incorrect" }
+    data class Forbidden(override val message: String) : TerminalError
+    data object PinBypassed : TerminalError { override val message = "PIN contourné" }
+    data object SessionExpired : TerminalError { override val message = "Session carte expirée : relire la carte" }
 }

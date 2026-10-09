@@ -8,4 +8,5 @@ interface TerminalServices {
     val printer: PrinterService
     val cardReader: CardReaderService
     val scanner: ScannerService
+    val pinPad: PinPadService
 }

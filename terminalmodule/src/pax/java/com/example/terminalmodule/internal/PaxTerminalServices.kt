@@ -2,13 +2,21 @@ package com.example.terminalmodule.pax.internal
 
 import android.content.Context
 import com.example.terminalmodule.api.CardReaderService
+import com.example.terminalmodule.api.PinPadService
 import com.example.terminalmodule.api.PrinterService
 import com.example.terminalmodule.api.ScannerService
 import com.example.terminalmodule.api.TerminalServices
+import com.example.terminalmodule.internal.PaxCardReaderService
+import com.example.terminalmodule.internal.PaxPrinterService
+import com.example.terminalmodule.internal.PaxScannerService
 import com.example.terminalmodule.model.DeviceType
+import com.pax.dal.IDAL
+import com.pax.neptunelite.api.NeptuneLiteUser
 
 
-internal class PaxTerminalServices(context: Context) : TerminalServices {
+internal class PaxTerminalServices(context: Context,
+                                   override val pinPad: PinPadService
+) : TerminalServices {
     private val dal: IDAL by lazy { NeptuneLiteUser.getInstance().getDal(context) } // SDK-VERIFY
 
     override val device = DeviceType.PAX

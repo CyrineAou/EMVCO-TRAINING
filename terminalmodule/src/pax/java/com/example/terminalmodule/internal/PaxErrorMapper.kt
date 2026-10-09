@@ -1,4 +1,4 @@
-package com.example.terminalmodule.pax.internal
+package com.example.terminalmodule.internal
 
 import com.example.terminalmodule.model.TerminalError
 

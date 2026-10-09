@@ -1,11 +1,12 @@
-package com.example.terminalmodule.pax.internal
+package com.example.terminalmodule.internal
 
 
 import com.example.terminalmodule.api.ScannerService
-import com.example.terminalmodule.internal.awaitCallback
-import com.example.terminalmodule.internal.terminalCall
 import com.example.terminalmodule.model.TerminalError
 import com.example.terminalmodule.model.TerminalResult
+import com.pax.dal.IDAL
+import com.pax.dal.IScanner
+import com.pax.dal.entity.EScannerType
 import kotlin.time.Duration
 
 internal class PaxScannerService(private val dal: IDAL) : ScannerService {

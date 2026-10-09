@@ -1,4 +1,4 @@
-package com.example.terminalmodule.nexgo.internal
+package com.example.terminalmodule.internal
 
 import android.content.Context
 import com.example.terminalmodule.api.TerminalServices

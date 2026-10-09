@@ -1,23 +1,39 @@
 package com.example.terminalmodule
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import com.example.terminalmodule.api.TerminalServices
-import com.example.terminalmodule.nexgo.internal.TerminalFactory
+import com.example.terminalmodule.internal.TerminalFactory
+import com.example.terminalmodule.internal.TerminalLog
 
-/** Seul objet public de configuration. Appeler [init] dans Application.onCreate(). */
 object Terminal {
     @Volatile private var instance: TerminalServices? = null
 
     val services: TerminalServices
-        get() = checkNotNull(instance) { "Terminal.init(context) doit être appelé dans Application.onCreate()" }
+        get() = checkNotNull(instance) { "Terminal.init(context) doit être appelé avant usage" }
 
     fun init(context: Context) {
-        if (instance != null) return
+        if (instance != null) {
+            TerminalLog.d("init ignoré : déjà initialisé")
+            return
+        }
         synchronized(this) {
-            if (instance == null) instance = TerminalFactory.create(context.applicationContext)
+            if (instance != null) return
+            val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            TerminalLog.verbose = debuggable
+            TerminalLog.i("init : debuggable=$debuggable")
+            try {
+                instance = TerminalFactory.create(context.applicationContext)
+                TerminalLog.i("init OK : device=${instance?.device}")
+            } catch (e: Throwable) {
+                TerminalLog.e("init a échoué : ${e.javaClass.simpleName}: ${e.message}", e)
+                throw e
+            }
         }
     }
 
-    /** Pour les tests / previews : injecter un faux terminal. */
-    fun override(services: TerminalServices) { instance = services }
+    fun override(services: TerminalServices) {
+        TerminalLog.w("override : terminal remplacé par ${services.device}")
+        instance = services
+    }
 }
