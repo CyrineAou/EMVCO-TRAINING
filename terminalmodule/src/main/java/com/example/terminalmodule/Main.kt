@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -13,12 +14,15 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.example.terminalmodule.internal.CardSessionStore
+import com.example.terminalmodule.internal.PanMode
+import com.example.terminalmodule.internal.PinSdkOptions
 import com.example.terminalmodule.internal.SdkInspector
 import com.example.terminalmodule.internal.TerminalLog
 import com.example.terminalmodule.internal.hexToBytes
@@ -37,6 +41,7 @@ class MainActivity : Activity() {
         const val TAG = "TerminalTest"
         const val REQ_CAMERA = 42
         const val MAX_LOG_CHARS = 40_000
+        const val PIN_PAD_CLASS = "com.nexgo.oaf.apiv3.device.pinpad.PinPad"
     }
 
     private val scope = MainScope()
@@ -45,8 +50,7 @@ class MainActivity : Activity() {
 
     private lateinit var statusView: TextView
     private lateinit var logView: TextView
-    private lateinit var scroll: ScrollView
-
+    private lateinit var logScroll: ScrollView
 
     private val isDebuggable: Boolean
         get() = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -55,9 +59,10 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(buildUi())
 
-        // Les logs internes du module apparaissent aussi à l'écran (sans Logcat).
+        // Les logs internes du module apparaissent aussi à l'écran.
         TerminalLog.sink = { line -> runOnUiThread { appendLine(line) } }
 
         log("Démarrage. debuggable=$isDebuggable")
@@ -69,8 +74,6 @@ class MainActivity : Activity() {
         scope.cancel()
         super.onDestroy()
     }
-
-    // ───────────── Initialisation ─────────────
 
     private fun initTerminal() {
         log("Appareil : ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.SDK_INT})")
@@ -107,13 +110,13 @@ class MainActivity : Activity() {
         runTest("Scan") { Terminal.services.scanner.scan() }
     }
 
-    // ───────────── Tests : PIN pad (debug uniquement) ─────────────
+    // ───────────── PIN pad : briques communes ─────────────
 
     private object TestKeys {
         const val PAN = "4111111111111111"
         const val TMK = "0123456789ABCDEFFEDCBA9876543210"
         const val TMK_KCV = "08D7B4"
-        const val PIN_KEY_CLEAR = "11223344556677889900AABBCCDDEEFF"
+        const val PIN_KEY_CLEAR = "11223344556677889900AABBCCDDEEFF" // uniquement pour vérifier le bloc
         const val PIN_KEY_UNDER_TMK = "3EB3B72576BBBE834F0B96AAA5A8B548"
         const val PIN_KEY_KCV = "5ED7EA"
         const val MASTER_INDEX = 1
@@ -121,15 +124,15 @@ class MainActivity : Activity() {
         const val TEST_PIN = "1234"
     }
 
-    private fun testInjectKeys() = runTest("Injection clés de test") {
+    private suspend fun injectTestKeys(): TerminalResult<Unit> {
         val pinPad = Terminal.services.pinPad
         val master = pinPad.injectKey(
             KeyInjection.ClearMasterForTest(
                 TestKeys.MASTER_INDEX, TestKeys.TMK.hexToBytes(), TestKeys.TMK_KCV.hexToBytes()
             )
         )
-        if (master is TerminalResult.Failure) return@runTest master
-        pinPad.injectKey(
+        if (master is TerminalResult.Failure) return master
+        return pinPad.injectKey(
             KeyInjection.UnderParent(
                 KeyKind.PIN, TestKeys.PIN_INDEX, TestKeys.MASTER_INDEX,
                 TestKeys.PIN_KEY_UNDER_TMK.hexToBytes(), TestKeys.PIN_KEY_KCV.hexToBytes()
@@ -137,13 +140,58 @@ class MainActivity : Activity() {
         )
     }
 
-
-    /** PAN de test, sans carte : le bloc peut être vérifié car le PAN est connu. */
-    private fun testPinWithTestPan() = runTest("PIN : tape ${TestKeys.TEST_PIN} sur le terminal") {
+    private suspend fun pinTest(): TerminalResult<String> {
+        log("Réglages PIN : ${PinSdkOptions.describe()}")
         val sessionId = CardSessionStore.put(TestKeys.PAN)
-        Terminal.services.pinPad
+        return Terminal.services.pinPad
             .requestPin(PinRequest(sessionId = sessionId, pinKeyIndex = TestKeys.PIN_INDEX))
             .map { verifyPinBlock(it) }
+    }
+
+    /** Déchiffre le bloc avec la clé PIN de test et contrôle le PIN. Test uniquement. */
+    private fun verifyPinBlock(enc: EncryptedPin): String {
+        if (enc.block.size != 8) return "✖ bloc de ${enc.block.size} octets (8 attendus)"
+        val format = PinSdkOptions.forceFormat ?: enc.format
+
+        val key = TestKeys.PIN_KEY_CLEAR.hexToBytes()
+        val cipher = Cipher.getInstance("DESede/ECB/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key + key.copyOf(8), "DESede"))
+        val clear = cipher.doFinal(enc.block)
+
+        val field: ByteArray = if (format == PinBlockFormat.ISO_1) {
+            clear // ISO-1 : pas de PAN dans le bloc
+        } else {
+            val panField = ("0000" + TestKeys.PAN.dropLast(1).takeLast(12)).hexToBytes()
+            ByteArray(8) { (clear[it].toInt() xor panField[it].toInt()).toByte() }
+        }
+
+        val hex = field.toHex()
+        val expectedControl = when (format) {
+            PinBlockFormat.ISO_0 -> '0'
+            PinBlockFormat.ISO_1 -> '1'
+            PinBlockFormat.ISO_3 -> '3'
+        }
+        if (hex[0] != expectedControl) {
+            return "✖ champ de contrôle ${hex[0]} (attendu $expectedControl) : clé, PAN ou format différents"
+        }
+        val length = hex[1].digitToIntOrNull(16) ?: return "✖ bloc invalide (longueur illisible)"
+        if (length !in 4..12) return "✖ bloc invalide (longueur $length)"
+        val pin = hex.substring(2, 2 + length)
+        return if (pin == TestKeys.TEST_PIN) "bloc valide, PIN décodé conforme" else "✖ le PIN décodé ne correspond pas"
+    }
+
+    // ───────────── PIN pad : tests de base ─────────────
+
+    private fun testInjectKeys() = runTest("Injection clés de test") { injectTestKeys() }
+
+    private fun testPinWithTestPan() =
+        runTest("PIN : tape ${TestKeys.TEST_PIN} puis valide") { pinTest() }
+
+    private fun testInjectThenPin() = runTest("Injection + PIN : tape ${TestKeys.TEST_PIN}") {
+        PinSdkOptions.reset()
+        val injected = injectTestKeys()
+        if (injected is TerminalResult.Failure) return@runTest injected
+        pinTest()
     }
 
     /** Vraie carte glissée : pas de vérification possible (PAN inconnu du test). */
@@ -155,19 +203,124 @@ class MainActivity : Activity() {
         Terminal.services.pinPad.requestPin(PinRequest(sessionId = sessionId, pinKeyIndex = TestKeys.PIN_INDEX))
     }
 
-    /** Déchiffre le bloc avec la clé PIN de test et contrôle le PIN. Test uniquement. */
-    private fun verifyPinBlock(enc: EncryptedPin): String {
-        if (enc.block.size != 8) return "✖ bloc de ${enc.block.size} octets (8 attendus)"
-        val key = TestKeys.PIN_KEY_CLEAR.hexToBytes()
-        val cipher = Cipher.getInstance("DESede/ECB/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key + key.copyOf(8), "DESede"))
-        val clear = cipher.doFinal(enc.block)
-        val panField = ("0000" + TestKeys.PAN.dropLast(1).takeLast(12)).hexToBytes()
-        val pinField = ByteArray(8) { (clear[it].toInt() xor panField[it].toInt()).toByte() }.toHex()
-        val length = pinField[1].digitToIntOrNull() ?: return "✖ bloc invalide (longueur illisible)"
-        if (length !in 4..12) return "✖ bloc invalide (longueur $length)"
-        val pin = pinField.substring(2, 2 + length)
-        return if (pin == TestKeys.TEST_PIN) "bloc valide, PIN décodé conforme" else "✖ le PIN décodé ne correspond pas"
+    // ───────────── PIN pad : variantes ─────────────
+
+    private data class PinVariant(
+        val label: String,
+        val format: PinBlockFormat?,
+        val pan: PanMode,
+        val bytes: Boolean,
+    )
+
+    private val pinVariants = listOf(
+        PinVariant("ISO-1 (n'utilise pas le PAN)", PinBlockFormat.ISO_1, PanMode.FULL, false),
+        PinVariant("ISO-0, PAN en octets", null, PanMode.FULL, true),
+        PinVariant("ISO-0, PAN sans chiffre de contrôle (15)", null, PanMode.NO_CHECK, false),
+        PinVariant("ISO-0, PAN 12 chiffres", null, PanMode.ISO12, false),
+    )
+    private var pinVariantIndex = 0
+    private var algoModeIndex = 0
+
+    private fun testPinNextVariant() {
+        if (busy()) return
+        val v = pinVariants[pinVariantIndex % pinVariants.size]
+        pinVariantIndex++
+        PinSdkOptions.reset()
+        PinSdkOptions.forceFormat = v.format
+        PinSdkOptions.panMode = v.pan
+        PinSdkOptions.panAsBytes = v.bytes
+        log("Variante $pinVariantIndex/${pinVariants.size} : ${v.label}")
+        testPinWithTestPan()
+    }
+
+
+
+    /** Essaie la valeur suivante de setAlgorithmMode : réinjecte les clés, puis saisie du PIN. */
+    private fun testPinNextAlgorithmMode() {
+        if (busy()) return
+        val names = SdkInspector.enumValuesOf(PIN_PAD_CLASS, "setAlgorithmMode")
+        if (names.isEmpty()) {
+            log("⚠ setAlgorithmMode introuvable")
+            return
+        }
+        val name = names[algoModeIndex % names.size]
+        algoModeIndex++
+        PinSdkOptions.reset()
+        PinSdkOptions.presets["setAlgorithmMode"] = name
+        log("Mode algorithme $algoModeIndex/${names.size} : $name")
+        runTest("Injection + PIN, setAlgorithmMode($name)") {
+            val injected = injectTestKeys()
+            if (injected is TerminalResult.Failure) return@runTest injected
+            pinTest()
+        }
+    }
+    private val lengthVariants = listOf(
+        listOf(4),
+        listOf(4, 5, 6),
+        listOf(0, 4, 5, 6, 7, 8, 9, 10, 11, 12),
+    )
+    private var lengthIndex = 0
+
+    private fun testPinNextLengths() {
+        if (busy()) return
+        val l = lengthVariants[lengthIndex % lengthVariants.size]
+        lengthIndex++
+        PinSdkOptions.reset()
+        PinSdkOptions.lengthOverride = l
+        log("Longueurs $lengthIndex/${lengthVariants.size} : $l")
+        testPinWithTestPan()
+    }
+
+    private val keyboardPresets = listOf(
+        "setPinKeyboardMode" to "FIXED",
+        "setPinKeyboardMode" to "RANDOM",
+        "setPinKeyboardViewMode" to "VIEW_1",
+        "setPinKeyboardClearMode" to "BACKSPACE",
+        "setPinKeyboardPinMaskMode" to "VISIBLE",
+        "setCipherMode" to "ECB",
+    )
+    private var keyboardIndex = 0
+
+    private fun testPinNextKeyboardSetting() {
+        if (busy()) return
+        val (method, value) = keyboardPresets[keyboardIndex % keyboardPresets.size]
+        keyboardIndex++
+        PinSdkOptions.reset()
+        PinSdkOptions.presets[method] = value
+        log("Réglage $keyboardIndex/${keyboardPresets.size} : $method($value)")
+        runTest("Injection + PIN, $method($value)") {
+            val injected = injectTestKeys()
+            if (injected is TerminalResult.Failure) return@runTest injected
+            pinTest()
+        }
+    }
+
+    private fun resetPinSettings() {
+        PinSdkOptions.reset()
+        lengthIndex = 0
+        keyboardIndex = 0
+        log("Réglages PIN réinitialisés : ${PinSdkOptions.describe()}")
+    }
+
+    // ───────────── Diagnostic du SDK ─────────────
+
+    private fun diagnosticPinPadMethods() {
+        log("Diagnostic : méthodes et codes du PIN pad")
+        SdkInspector.dump(PIN_PAD_CLASS)
+        SdkInspector.dump("com.nexgo.oaf.apiv3.device.pinpad.PinAlgorithmModeEnum")
+        SdkInspector.dump("com.nexgo.oaf.apiv3.device.pinpad.WorkKeyTypeEnum")
+        SdkInspector.dump("com.nexgo.oaf.apiv3.SdkResult", constantPrefix = "PinPad")
+    }
+
+    private fun diagnosticPinPadSettings() {
+        log("Diagnostic : valeurs possibles des réglages du PIN pad")
+        SdkInspector.dumpSetterEnums(
+            PIN_PAD_CLASS,
+            listOf(
+                "setAlgorithmMode", "setCipherMode", "setPinKeyboardMode",
+                "setPinKeyboardViewMode", "setPinKeyboardClearMode", "setPinKeyboardPinMaskMode",
+            )
+        )
     }
 
     // ───────────── Permission caméra ─────────────
@@ -194,16 +347,20 @@ class MainActivity : Activity() {
 
     // ───────────── Exécution commune ─────────────
 
+    /** @return true (et le dit dans le journal) si une opération est déjà en cours. */
+    private fun busy(): Boolean {
+        val running = job?.isActive == true
+        if (running) log("⚠ Une opération est déjà en cours : attends sa fin ou appuie sur Annuler")
+        return running
+    }
+
     private fun cancelCurrent() {
         if (job?.isActive == true) log("⏹ Annulation demandée") else log("Rien à annuler")
         job?.cancel()
     }
 
     private fun <T> runTest(label: String, block: suspend () -> TerminalResult<T>) {
-        if (job?.isActive == true) {
-            log("⚠ Une opération est déjà en cours : attends sa fin ou appuie sur Annuler")
-            return
-        }
+        if (busy()) return
         log("▶ $label")
         setStatus("En cours : $label")
         job = scope.launch {
@@ -229,7 +386,6 @@ class MainActivity : Activity() {
 
     // ───────────── Journal ─────────────
 
-    /** Journal de l'activité : écran + Logcat (niveau Info, plus visible que Debug). */
     private fun log(msg: String, error: Throwable? = null) {
         Log.i(TAG, msg, error)
         appendLine("A  $msg")
@@ -241,7 +397,7 @@ class MainActivity : Activity() {
         if (logView.length() > MAX_LOG_CHARS) {
             logView.text = logView.text.takeLast(MAX_LOG_CHARS / 2)
         }
-        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        logScroll.post { logScroll.fullScroll(View.FOCUS_DOWN) }
     }
 
     private fun setStatus(text: String) {
@@ -254,68 +410,81 @@ class MainActivity : Activity() {
         Toast.makeText(this, "Journal copié", Toast.LENGTH_SHORT).show()
     }
 
-    private fun diagnosticPinPadSdk() {
-        log("Diagnostic SDK PIN pad (noms uniquement)")
-        SdkInspector.dump("com.nexgo.oaf.apiv3.device.pinpad.PinPad")
-        SdkInspector.dump("com.nexgo.oaf.apiv3.device.pinpad.PinAlgorithmModeEnum")
-        SdkInspector.dump("com.nexgo.oaf.apiv3.device.pinpad.WorkKeyTypeEnum")
-        SdkInspector.dump("com.nexgo.oaf.apiv3.device.pinpad.OnPinPadInputListener")
-        SdkInspector.dump("com.nexgo.oaf.apiv3.SdkResult", constantPrefix = "PinPad")
-    }
-
     private fun clearLog() {
         logView.text = ""
     }
 
     private fun now() = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
 
-    // ───────────── Interface ─────────────
+    // ───────────── Interface : deux zones qui défilent ─────────────
 
     private fun buildUi(): LinearLayout {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 24, 24, 24)
+            setPadding(16, 16, 16, 16)
         }
 
         statusView = TextView(this).apply {
             textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
             text = "Terminal : …"
         }
         root.addView(statusView)
 
-        root.addView(section("Périphériques"))
-        root.addView(button("Imprimer un ticket test", ::testPrinter))
-        root.addView(button("Lire une carte (piste magnétique)", ::testCardReader))
-        root.addView(button("Scanner un code", ::testScanner))
-        root.addView(button("Diagnostic SDK PIN pad", ::diagnosticPinPadSdk))
+        // Zone du haut : boutons, défilante
+        val buttons = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        buttons.addView(section("1. Périphériques"))
+        buttons.addView(button("Imprimer un ticket test", ::testPrinter))
+        buttons.addView(button("Lire une carte (piste magnétique)", ::testCardReader))
+        buttons.addView(button("Scanner un code", ::testScanner))
 
         if (isDebuggable) {
-            root.addView(section("PIN pad (debug)"))
-            root.addView(button("1) Injecter les clés de test", ::testInjectKeys))
-            root.addView(button("2) Saisie du PIN + vérification", ::testPinWithTestPan))
-            root.addView(button("PIN avec une carte de test", ::testPinRealCard))
+            buttons.addView(section("2. PIN pad : tests de base"))
+            buttons.addView(button("Injecter les clés de test", ::testInjectKeys))
+            buttons.addView(button("Saisie du PIN + vérification", ::testPinWithTestPan))
+            buttons.addView(button("Injection + saisie (tout-en-un)", ::testInjectThenPin))
+            buttons.addView(button("PIN avec une carte de test", ::testPinRealCard))
+
+            buttons.addView(section("3. PIN pad : variantes"))
+            buttons.addView(button("Longueurs de PIN suivantes", ::testPinNextLengths))
+            buttons.addView(button("Réglage clavier suivant", ::testPinNextKeyboardSetting))
+            buttons.addView(button("Variante PAN / format suivante", ::testPinNextVariant))
+            buttons.addView(button("Mode algorithme suivant", ::testPinNextAlgorithmMode))
+            buttons.addView(button("Réinitialiser les réglages PIN", ::resetPinSettings))
+
+            buttons.addView(section("4. Diagnostic (lecture seule)"))
+            buttons.addView(button("Réglages du PIN pad (valeurs)", ::diagnosticPinPadSettings))
+            buttons.addView(button("Méthodes et codes du PIN pad", ::diagnosticPinPadMethods))
         }
 
-        root.addView(button("Annuler l'opération en cours", ::cancelCurrent))
+        root.addView(
+            ScrollView(this).apply { addView(buttons) },
+            LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f)
+        )
 
+        // Barre fixe : toujours visible
         root.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            addView(button("Annuler", ::cancelCurrent), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             addView(button("Copier le journal", ::copyLog), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             addView(button("Effacer", ::clearLog), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         })
 
+        // Zone du bas : journal, défilant
         logView = TextView(this).apply {
             textSize = 12f
             setTextIsSelectable(true)
         }
-        scroll = ScrollView(this).apply { addView(logView) }
-        root.addView(scroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+        logScroll = ScrollView(this).apply { addView(logView) }
+        root.addView(logScroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
         return root
     }
 
     private fun section(title: String) = TextView(this).apply {
         text = title
         textSize = 14f
+        setTypeface(typeface, Typeface.BOLD)
         setPadding(0, 16, 0, 4)
     }
 
