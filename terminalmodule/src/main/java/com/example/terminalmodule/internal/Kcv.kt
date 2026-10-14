@@ -5,7 +5,7 @@ import com.example.terminalmodule.model.TerminalError
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 
-internal object Kcv {
+ object Kcv {
     /** KCV TDES : 3 premiers octets de TDES-ECB(clé, 8 octets à zéro). */
     fun tdes(key: ByteArray): ByteArray {
         val k24 = when (key.size) {

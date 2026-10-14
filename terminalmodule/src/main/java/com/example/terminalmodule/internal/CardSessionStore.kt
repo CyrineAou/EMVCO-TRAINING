@@ -4,7 +4,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /** Garde le PAN le temps d'une transaction. Usage unique, expiration 2 minutes. */
-internal object CardSessionStore {
+ object CardSessionStore {
     private class Entry(val pan: CharArray, val expiresAtNanos: Long)
 
     private const val TTL_NANOS = 120_000_000_000L

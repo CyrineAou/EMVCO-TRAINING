@@ -1,690 +1,647 @@
-//package com.example.nexgointegration
-//
-//import android.os.Bundle
-//import android.util.Log
-//import android.widget.TextView
-//import androidx.activity.ComponentActivity
-//
-//import com.nexgo.common.LogUtils
-//import com.nexgo.libpboc.ByteUtils
-//import com.nexgo.oaf.apiv3.APIProxy
-//import com.nexgo.oaf.apiv3.DeviceEngine
-//import com.nexgo.oaf.apiv3.device.pinpad.WorkKeyTypeEnum
-//import com.nexgo.oaf.apiv3.device.reader.CardInfoEntity
-//import com.nexgo.oaf.apiv3.device.reader.CardSlotTypeEnum
-//import com.nexgo.oaf.apiv3.device.reader.OnCardInfoListener
-//import com.nexgo.oaf.apiv3.emv.*
-//
-//import org.json.JSONArray
-//
-//import java.io.InputStream
-//import java.nio.charset.Charset
-//import java.util.HashSet
-//import java.util.LinkedHashMap
-//
-//class MainActivity : ComponentActivity() {
-//
-//    companion object {
-//        private const val TAG = "APDU_CLEAN"
-//        private const val CONTACTLESS_TTQ = "26C0C000"
-//        private const val CONTACT_CAPABILITIES = "6060C8"
-//        private const val CONTACTLESS_CAPABILITIES = "E080C8"
-//        private const val VISA_AID = "A0000000031010"
-//        private const val MASTERCARD_AID = "A0000000041010"
-//    }
-//
-//    private lateinit var deviceEngine: DeviceEngine
-//    private lateinit var emvHandler: EmvHandler2
-//
-//    private lateinit var statusTextView: TextView
-//    private lateinit var pinMaskTextView: TextView
-//
-//    @Volatile
-//    private var emvInProgress = false
-//
-//    @Volatile
-//    private var searchInProgress = false
-//
-//    private val loadedCapkKeys = mutableSetOf<Pair<String, Int>>()
-//
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState)
-//        setContentView(R.layout.activity_main)
-//
-//        statusTextView = findViewById(R.id.statusTextView)
-//        pinMaskTextView = findViewById(R.id.pinTextView)
-//
-//        deviceEngine = APIProxy.getDeviceEngine(this)
-//        emvHandler = deviceEngine.getEmvHandler2("Main-Kernel2")
-//
-//        emvHandler.emvDebugLog(true)
-//        LogUtils.setDebugEnable(true)
-//
-//        initPinPadKeys()
-//        configureAids()
-//        injectCapkFromJson()
-//
-//        statusTextView.post {
-//            startBancaireWorkflow("10000")
-//        }
-//    }
-//
-//    private fun initPinPadKeys() {
-//        try {
-//            val pinPad = deviceEngine.getPinPad()
-//            val masterKey = ByteUtils.hexString2ByteArray("111111111111111111111111111111")
-//            val workerKey = ByteUtils.hexString2ByteArray("211111111111111111111111111111")
-//            pinPad.writeMKey(0, masterKey, masterKey.size)
-//            pinPad.writeWKey(0, WorkKeyTypeEnum.PINKEY, workerKey, workerKey.size)
-//        } catch (e: Exception) {
-//            Log.e(TAG, "Erreur initialisation Master Key", e)
-//        }
-//    }
-//
-//    private fun configureAids() {
-//        try {
-//            val aidList = ArrayList<AidEntity>()
-//
-//            // VISA configuré pour autoriser l'offline (TAC à 0)
-//            val visaAid = AidEntity().apply {
-//                aid = VISA_AID
-//                asi = 0
-//                floorLimit = 50000L
-//                threshold = 0L
-//                tacDenial = "0000000000"
-//                tacOnline = "DC4000A800"
-//                tacDefault = "DC4000A800"
-//                appVerNum = "0096"
-//                contactlessFloorLimit = 50000L
-//                contactlessCvmLimit = 50000L
-//                contactlessTransLimit = 999999L
-//            }
-//            aidList.add(visaAid)
-//
-//            // MASTERCARD configuré
-//            val mastercardAid = AidEntity().apply {
-//                aid = MASTERCARD_AID
-//                asi = 0
-//                floorLimit = 50000L
-//                threshold = 0L
-//                tacDenial = "0000000000"
-//                tacOnline = "DC4000A800"
-//                tacDefault = "DC4000A800"
-//                appVerNum = "0033"
-//                contactlessFloorLimit = 50000L
-//                contactlessCvmLimit = 50000L
-//                contactlessTransLimit = 999999L
-//            }
-//            aidList.add(mastercardAid)
-//
-//            emvHandler.delAllAid()
-//            emvHandler.setAidParaList(aidList)
-//        } catch (e: Exception) {
-//            Log.e(TAG, "Erreur configuration AID", e)
-//        }
-//    }
-//
-//    private fun injectCapkFromJson() {
-//        try {
-//            val inputStream: InputStream = assets.open("emv_capk.json")
-//            val size = inputStream.available()
-//            val buffer = ByteArray(size)
-//            inputStream.read(buffer)
-//            inputStream.close()
-//
-//            val jsonString = String(buffer, Charset.forName("UTF-8"))
-//            val jsonArray = JSONArray(jsonString)
-//
-//            emvHandler.delAllCapk()
-//            loadedCapkKeys.clear()
-//
-//            for (i in 0 until jsonArray.length()) {
-//                val jsonObject = jsonArray.getJSONObject(i)
-//                var rawExpire = jsonObject.getString("expireDate").trim()
-//                if (rawExpire.length == 8) rawExpire = rawExpire.substring(2)
-//
-//                val capk = CapkEntity().apply {
-//                    rid = jsonObject.getString("rid").replace(Regex("[^0-9A-Fa-f]"), "").uppercase()
-//                    capkIdx = jsonObject.getInt("capkIdx")
-//                    hashInd = jsonObject.getInt("hashInd")
-//                    arithInd = jsonObject.getInt("arithInd")
-//                    modulus = jsonObject.getString("modulus").replace(Regex("[^0-9A-Fa-f]"), "").uppercase()
-//                    exponent = jsonObject.getString("exponent").replace(Regex("[^0-9A-Fa-f]"), "").uppercase()
-//                    expireDate = rawExpire
-//                    checkSum = jsonObject.getString("checkSum").replace(Regex("[^0-9A-Fa-f]"), "").uppercase()
-//                }
-//                emvHandler.setCAPKList(arrayListOf(capk))
-//            }
-//        } catch (e: Exception) {
-//            Log.e(TAG, "Erreur CAPK", e)
-//        }
-//    }
-//
-//    private fun startBancaireWorkflow(amountInCents: String) {
-//        if (searchInProgress || emvInProgress) return
-//
-//        runOnUiThread { statusTextView.text = "Veuillez approcher votre carte..." }
-//
-//        val cardReader = deviceEngine.getCardReader()
-//        try { cardReader.stopSearch() } catch (_: Exception) {}
-//
-//        val slotTypes = HashSet<CardSlotTypeEnum>().apply {
-//            add(CardSlotTypeEnum.ICC1)
-//            add(CardSlotTypeEnum.RF)
-//        }
-//
-//        searchInProgress = true
-//        cardReader.searchCard(slotTypes, 30, object : OnCardInfoListener {
-//            override fun onCardInfo(retCode: Int, cardInfoEntity: CardInfoEntity?) {
-//                if (emvInProgress) return
-//                try { cardReader.stopSearch() } catch (_: Exception) {}
-//                searchInProgress = false
-//
-//                if (retCode == 0 && cardInfoEntity != null) {
-//                    val entryMode = if (cardInfoEntity.cardExistslot == CardSlotTypeEnum.RF)
-//                        EmvEntryModeEnum.EMV_ENTRY_MODE_CONTACTLESS
-//                    else
-//                        EmvEntryModeEnum.EMV_ENTRY_MODE_CONTACT
-//
-//                    if (entryMode == EmvEntryModeEnum.EMV_ENTRY_MODE_CONTACTLESS) {
-//                        try { deviceEngine.beeper.beep(5, 5) } catch (_: Exception) {}
-//                    }
-//                    runEmvKernel(amountInCents, entryMode)
-//                }
-//            }
-//            override fun onSwipeIncorrect() { searchInProgress = false }
-//            override fun onMultipleCards() { searchInProgress = false }
-//        })
-//    }
-//
-//    private fun runEmvKernel(amountInCents: String, entryMode: EmvEntryModeEnum) {
-//        if (emvInProgress) return
-//
-//        if (entryMode == EmvEntryModeEnum.EMV_ENTRY_MODE_CONTACTLESS) {
-//            emvHandler.setTlv(ByteUtils.hexString2ByteArray("9F33"), ByteUtils.hexString2ByteArray(CONTACTLESS_CAPABILITIES))
-//            emvHandler.setTlv(ByteUtils.hexString2ByteArray("9F66"), ByteUtils.hexString2ByteArray(CONTACTLESS_TTQ))
-//        }
-//
-//        val transParam = EmvTransConfigurationEntity().apply {
-//            transAmount = amountInCents
-//            emvTransType = 0x00.toByte()
-//            termId = "NEXGO001"
-//            merId = "MERCHANT123"
-//            countryCode = "0788"
-//            currencyCode = "0788"
-//            this.emvEntryModeEnum = entryMode
-//            emvProcessFlowEnum = EmvProcessFlowEnum.EMV_PROCESS_FLOW_STANDARD
-//        }
-//
-//        emvInProgress = true
-//
-//        emvHandler.emvProcess(transParam, object : OnEmvProcessListener2 {
-//            override fun onSelApp(
-//                appNameList: MutableList<String>?,
-//                candidateList: MutableList<CandidateAppInfoEntity>?,
-//                isMustSelect: Boolean
-//            ) {
-//                val nbCandidates = candidateList?.size ?: 0
-//                Log.d("APDU_CLEAN", "=== onSelApp : isMustSelect=$isMustSelect | nb candidats=$nbCandidates ===")
-//
-//                val displayText = StringBuilder("Applications trouvées ($nbCandidates) :\n")
-//                candidateList?.forEachIndexed { index, candidate ->
-//                    val aidDecoded = candidate.aid ?: "N/A"
-//                    val label = candidate.appLabel ?: "Sans nom"
-//                    Log.d("APDU_CLEAN", "[$index] AID=$aidDecoded | Label=$label | Priorité=${candidate.priority}")
-//                    displayText.append("[$index] $label (${candidate.priority})\n     AID: $aidDecoded\n")
-//                }
-//
-//                runOnUiThread { statusTextView.text = displayText.toString() }
-//
-//                // Un seul appel de réponse propre :
-//                if (!candidateList.isNullOrEmpty()) {
-//                    emvHandler.onSetSelAppResponse(0)
-//                } else {
-//                    emvHandler.onSetSelAppResponse(-1)
-//                }
-//            }
-//
-//            override fun onConfirmCardNo(cardInfo: CardInfoEntity?) {
-//                emvHandler.onSetConfirmCardNoResponse(cardInfo != null)
-//            }
-//
-//            override fun onTransInitBeforeGPO() {
-//                if (entryMode == EmvEntryModeEnum.EMV_ENTRY_MODE_CONTACTLESS) {
-//                    emvHandler.setTlv(ByteUtils.hexString2ByteArray("9F66"), ByteUtils.hexString2ByteArray(CONTACTLESS_TTQ))
-//                }
-//                emvHandler.onSetTransInitBeforeGPOResponse(true)
-//            }
-//
-//            override fun onCardHolderInputPin(isOnlinePin: Boolean, remainingTries: Int) {
-//                // Gestion PIN si nécessaire
-//                emvHandler.onSetPinInputResponse(true, false)
-//            }
-//
-//            override fun onContactlessTapCardAgain() {
-//                emvHandler.onSetContactlessTapCardResponse(true)
-//            }
-//
-//            override fun onOnlineProc() {
-//                // Ne devrait plus être appelé si l'offline est totalement autorisé par les TAC
-//                Log.d(TAG, "=== onOnlineProc (appelé par défaut si la carte force l'online) ===")
-//                val resultEntity = EmvOnlineResultEntity().apply {
-//                    rejCode = "00"
-//                    authCode = "AUTH88"
-//                    recvField55 = byteArrayOf(0x8A.toByte(), 0x02, 0x30, 0x30)
-//                }
-//                emvHandler.onSetOnlineProcResponse(0, resultEntity)
-//            }
-//
-//            override fun onPrompt(prompt: PromptEnum?) {
-//                emvHandler.onSetPromptResponse(true)
-//            }
-//
-//            override fun onRemoveCard() {
-//                emvHandler.onSetRemoveCardResponse()
-//            }
-//
-//            override fun onFinish(result: Int, resultEntity: EmvProcessResultEntity?) {
-//                emvInProgress = false
-//                Log.d(TAG, "=== onFinish Result = $result ===")
-//                debugEmvTags("ON_FINISH")
-//
-//                runOnUiThread {
-//                    statusTextView.text = if (result == 0) "PAIEMENT ACCEPTÉ (OFFLINE)" else "INTERROMPU"
-//                }
-//            }
-//        })
-//    }
-//
-//    private fun debugEmvTags(stage: String) {
-//        val requestedTags  = arrayOf(
-//            "9F26", "9F27", "9F10", "9F37", "9F36",
-//            "95", "9B", "9F1A", "5F2A", "9A", "9C",
-//            "9F02", "57", "5F34", "9F0F", "8F", "4F", "5F24", "8E",
-//            "9F34", "9F66", "9F6C", "82", "9F33", "9F6E",
-//            "9F10","9F3E", "9F0A", "BF0C"
-//
-//        )
-//        try {
-//            val raw = emvHandler.getTlvByTags(requestedTags)
-//            val parsed = parseTlvHexString(raw)
-//            requestedTags.forEach { tag ->
-//                Log.d(TAG, "DEBUG [$stage] $tag = ${parsed[tag] ?: "ABSENT"}")
-//            }
-//        } catch (_: Exception) {}
-//    }
-//
-//    private fun parseTlvHexString(hex: String?): Map<String, String> {
-//        val result = LinkedHashMap<String, String>()
-//        if (hex.isNullOrBlank()) return result
-//        val bytes = ByteUtils.hexString2ByteArray(hex.replace(Regex("\\s+"), "").uppercase())
-//        var i = 0
-//        while (i < bytes.size) {
-//            val tagStart = i
-//            val firstByte = bytes[i].toInt() and 0xFF
-//            i++
-//            if (firstByte and 0x1F == 0x1F) {
-//                while (i < bytes.size && (bytes[i].toInt() and 0x80) != 0) i++
-//                if (i < bytes.size) i++
-//            }
-//            if (i > bytes.size) break
-//            val tagHex = ByteUtils.byteArray2HexString(bytes.copyOfRange(tagStart, i)).uppercase()
-//            if (i >= bytes.size) break
-//            val lenByte = bytes[i].toInt() and 0xFF
-//            i++
-//            val length = if (lenByte and 0x80 != 0) {
-//                var len = 0
-//                repeat(lenByte and 0x7F) { len = (len shl 8) or (bytes[i++].toInt() and 0xFF) }
-//                len
-//            } else lenByte
-//            if (length < 0 || i + length > bytes.size) break
-//            result[tagHex] = ByteUtils.byteArray2HexString(bytes.copyOfRange(i, i + length)).uppercase()
-//            i += length
-//        }
-//        return result
-//    }
-//
-//    override fun onDestroy() {
-//        try { deviceEngine.getCardReader().stopSearch() } catch (_: Exception) {}
-//        try { if (emvInProgress) emvHandler.emvProcessCancel() } catch (_: Exception) {}
-//        super.onDestroy()
-//    }
-//
-//    // Cette fonction prend juste les codes pays sous forme de texte et dit true ou false
-//    fun isDomesticTransaction(issuerCountryCode: String?, terminalCountryCode: String?): Boolean {
-//        return issuerCountryCode != null && terminalCountryCode != null && issuerCountryCode == terminalCountryCode
-//    }
-//}
-//
 package com.example.nexgointegration
 
+import DataConverter.hexToBytes
+import DataConverter.toHex
+import android.Manifest
+import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.pm.PackageManager
+import android.graphics.Typeface
+import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
+import android.text.InputType
 import android.util.Log
+import android.view.View
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.view.WindowManager
 import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
-import androidx.activity.ComponentActivity
+import android.widget.Toast
 import com.example.nexgointegration.gateway.FakePaymentGateway
-import com.example.nexgointegration.gateway.PaymentGatewayImpl
+import com.example.nexgointegration.parameters.EmvKernelSelfCheck
+import com.example.terminalmodule.Terminal
+import com.example.terminalmodule.internal.CardSessionStore
+import com.example.terminalmodule.internal.PanMode
+import com.example.terminalmodule.internal.PinSdkOptions
+import com.example.terminalmodule.internal.SdkInspector
+import com.example.terminalmodule.model.*
 import com.nexgo.oaf.apiv3.device.reader.CardInfoEntity
 import com.nexgo.oaf.apiv3.emv.EmvProcessResultEntity
+import kotlinx.coroutines.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
 
-class MainActivity : ComponentActivity() {
+class MainActivity : Activity() {
 
-    companion object {
-        private const val TAG = "EMV_TRANSACTION"
+    private companion object {
+        const val TAG = "TerminalTest"
+        const val EMV_TAG = "EMV_TEST"
+        const val REQ_CAMERA = 42
+        const val MAX_LOG_CHARS = 40_000
     }
 
-    private lateinit var paymentManager: PaymentManager
+    private val scope = MainScope()
+    private var job: Job? = null
+    private var pendingAfterPermission: (() -> Unit)? = null
+    private var paymentManager: PaymentManager? = null
 
-    private lateinit var statusTextView: TextView
-    private lateinit var amountTextView: TextView
-    private lateinit var startButton: Button
-    private lateinit var cancelButton: Button
+    private lateinit var statusView: TextView
+    private lateinit var logView: TextView
+    private lateinit var logScroll: ScrollView
+    private lateinit var amountInput: EditText
+    val PIN_PAD_CLASS = "com.nexgo.oaf.apiv3.device.pinpad.PinPad"
+
+    // ───────────── Lifecycle ─────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
-
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        setContentView(buildUi())
 
-        setContentView(R.layout.activity_main)
-
-        log("==================================================")
-        log("APPLICATION START")
-        log("==================================================")
-
-        statusTextView = findViewById(R.id.statusTextView)
-        amountTextView = findViewById(R.id.amountTextView)
-        startButton = findViewById(R.id.startPaymentButton)
-        cancelButton = findViewById(R.id.cancelPaymentButton)
-
-        log("UI initialized")
-
-        val gateway = FakePaymentGateway()
-        paymentManager = PaymentManager(
-            context = this,
-            paymentGateway = gateway,
-            listener = object : PaymentManager.Listener {
-
-                override fun onWaitingForCard() {
-
-                    log("--------------------------------------------------")
-                    log("[CARD] Waiting for card")
-                    log("--------------------------------------------------")
-
-                    runOnUiThread {
-
-                        statusTextView.text =
-                            "Veuillez insérer ou présenter votre carte..."
-
-                        startButton.isEnabled = false
-                        cancelButton.isEnabled = true
-                    }
-                }
-
-                override fun onCardDetected(
-                    cardInfo: CardInfoEntity
-                ) {
-
-                    log("--------------------------------------------------")
-                    log("[CARD] CARD DETECTED")
-                    log("[CARD] Slot = ${cardInfo.cardExistslot}")
-                    log("--------------------------------------------------")
-
-                    runOnUiThread {
-
-                        statusTextView.text =
-                            "Carte détectée..."
-                    }
-                }
-
-                override fun onTransactionFinished(
-                    result: Int,
-                    resultEntity: EmvProcessResultEntity?
-                ) {
-
-                    log("==================================================")
-                    log("[FINISH] EMV TRANSACTION FINISHED")
-                    log("[FINISH] Result code = $result")
-
-                    log("[FINISH] Result entity = ${resultEntity != null}")
-
-                    if (result == 0) {
-
-                        log("[FINISH] STATUS = SUCCESS")
-                        log("[FINISH] TRANSACTION ACCEPTED")
-
-                    } else {
-
-                        log("[FINISH] STATUS = FAILED")
-                        log("[FINISH] TRANSACTION REJECTED")
-                    }
-
-                    log("==================================================")
-
-                    /*
-                     * IMPORTANT :
-                     * onTransactionFinished() peut être appelé
-                     * depuis EmvThread2.
-                     *
-                     * Toutes les modifications UI doivent donc
-                     * être effectuées sur le Main Thread.
-                     */
-
-                    runOnUiThread {
-
-                        startButton.isEnabled = true
-                        cancelButton.isEnabled = false
-
-                        if (result == 0) {
-
-                            statusTextView.text =
-                                "Transaction terminée"
-
-                        } else {
-
-                            statusTextView.text =
-                                "Transaction échouée : $result"
-                        }
-                    }
-                }
-
-                override fun onError(
-                    message: String
-                ) {
-
-                    log("==================================================")
-                    log("[ERROR] EMV ERROR")
-                    log("[ERROR] $message")
-                    log("==================================================")
-
-                    runOnUiThread {
-
-                        startButton.isEnabled = true
-                        cancelButton.isEnabled = false
-
-                        statusTextView.text =
-                            "Erreur : $message"
-                    }
-                }
-            }
-        )
-
-        log("[INIT] PaymentManager initialized")
-
-//        startButton.setOnClickListener {
-//
-//            log("==================================================")
-//            log("[START] PAYMENT BUTTON CLICKED")
-//            log("==================================================")
-//
-//            val amount = amountTextView.text
-//                .toString()
-//                .trim()
-//
-//            log("[START] Amount entered = '$amount'")
-//
-//            if (amount.isEmpty()) {
-//
-//                log("[START] ERROR: Amount is empty")
-//
-//                updateStatus(
-//                    "Veuillez saisir un montant"
-//                )
-//
-//                return@setOnClickListener
-//            }
-//
-//            log("[START] Starting payment")
-//            log("[START] Amount = $amount")
-//
-//            startButton.isEnabled = false
-//            cancelButton.isEnabled = true
-//
-//            try {
-//
-//                paymentManager.startPayment(amount)
-//
-//                log("[START] paymentManager.startPayment() called")
-//
-//            } catch (e: Exception) {
-//
-//                Log.e(
-//                    TAG,
-//                    "[START] Exception while starting payment",
-//                    e
-//                )
-//
-//                startButton.isEnabled = true
-//                cancelButton.isEnabled = false
-//
-//                updateStatus(
-//                    "Erreur démarrage : ${e.message}"
-//                )
-//            }
-//        }
-
-        startButton.setOnClickListener {
-
-            val amount = amountTextView.text
-                .toString()
-                .trim()
-
-            if (amount.isEmpty()) {
-                updateStatus("Veuillez saisir un montant")
-                return@setOnClickListener
-            }
-
-            startButton.isEnabled = false
-            cancelButton.isEnabled = true
-
-            try {
-                paymentManager.startPayment(amount)
-            } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "Erreur démarrage paiement",
-                    e
-                )
-
-                startButton.isEnabled = true
-                cancelButton.isEnabled = false
-
-                updateStatus(
-                    "Erreur démarrage : ${e.message}"
-                )
-            }
-        }
-
-        cancelButton.setOnClickListener {
-
-            log("==================================================")
-            log("[CANCEL] CANCEL BUTTON CLICKED")
-            log("==================================================")
-
-            try {
-
-                paymentManager.cancel()
-
-                log("[CANCEL] Payment cancellation requested")
-
-            } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "[CANCEL] Exception during cancellation",
-                    e
-                )
-            }
-
-            runOnUiThread {
-
-                startButton.isEnabled = true
-                cancelButton.isEnabled = false
-
-                statusTextView.text =
-                    "Transaction annulée"
-            }
-        }
-
-        runOnUiThread {
-
-            statusTextView.text =
-                "Terminal prêt"
-
-            startButton.isEnabled = true
-            cancelButton.isEnabled = false
-        }
-
-        log("[INIT] Terminal ready")
-    }
-
-    /**
-     * Log simple et lisible.
-     */
-    private fun log(message: String) {
-
-        Log.d(
-            TAG,
-            message
-        )
-    }
-
-    /**
-     * Mise à jour sécurisée de l'interface.
-     *
-     * Cette méthode peut être appelée depuis n'importe quel thread.
-     */
-    private fun updateStatus(
-        message: String
-    ) {
-
-        runOnUiThread {
-
-            statusTextView.text = message
-        }
+        Log.d(EMV_TAG, ">>> MainActivity started")
+        log("Démarrage")
+        initTerminal()
+        initPayment()
     }
 
     override fun onDestroy() {
-
-        log("==================================================")
-        log("[LIFECYCLE] onDestroy()")
-        log("==================================================")
-
         try {
-
-            paymentManager.destroy()
-
-            log("[LIFECYCLE] PaymentManager destroyed")
-
+            paymentManager?.destroy()
         } catch (e: Exception) {
+            Log.e(TAG, "destroy PaymentManager", e)
+        }
+        scope.cancel()
+        super.onDestroy()
+    }
 
-            Log.e(
-                TAG,
-                "[LIFECYCLE] Error destroying PaymentManager",
-                e
+    private fun initTerminal() {
+        log("Appareil : ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.SDK_INT})")
+        try {
+            Terminal.init(applicationContext)
+            val device = Terminal.services.device
+            setStatus("Terminal : $device")
+            log("Terminal.init OK, device = $device")
+        } catch (e: Throwable) {
+            setStatus("Terminal : ERREUR d'initialisation")
+            log("Terminal.init a échoué : ${e.javaClass.simpleName}: ${e.message}", e)
+        }
+    }
+
+    /** Crée le PaymentManager : charge aussi les paramètres EMV vers le kernel L2. */
+    private fun initPayment() {
+        try {
+            paymentManager = PaymentManager(
+                context = this,
+                paymentGateway = FakePaymentGateway(),
+                listener = object : PaymentManager.Listener {
+
+                    override fun onWaitingForCard() {
+                        log("[CARD] En attente de carte")
+                        setStatus("Présente ou insère la carte...")
+                    }
+
+                    override fun onCardDetected(cardInfo: CardInfoEntity) {
+                        log("[CARD] Carte détectée, slot = ${cardInfo.cardExistslot}")
+                    }
+
+                    override fun onTransactionFinished(
+                        result: Int,
+                        resultEntity: EmvProcessResultEntity?
+                    ) {
+                        log(
+                            if (result == 0) "✔ [EMV] Transaction acceptée (code $result)"
+                            else "✖ [EMV] Transaction échouée (code $result)"
+                        )
+                        setStatus("Terminal : prêt")
+                    }
+
+                    override fun onError(message: String) {
+                        log("✖ [ERREUR] $message")
+                        setStatus("Terminal : erreur")
+                    }
+                }
             )
+            log("PaymentManager initialisé (paramètres EMV envoyés au kernel L2)")
+        } catch (e: Throwable) {
+            log("💥 PaymentManager : ${e.javaClass.simpleName}: ${e.message}", e)
+        }
+    }
+
+    // ───────────── 1. Périphériques ─────────────
+
+    private fun testPrinter() = runTest("Impression") {
+        Terminal.services.printer.print(
+            listOf(
+                PrintLine.Text("TEST TERMINAL", bold = true, size = FontSize.LARGE, align = Align.CENTER),
+                PrintLine.Text("Date : ${now()}"),
+                PrintLine.Feed(3),
+            )
+        )
+    }
+
+    private fun testCardReader() = runTest("Lecture carte (glisse une carte)") {
+        Terminal.services.cardReader.readCard().map { c ->
+            "${c.maskedPan}  exp ${c.expiry ?: "?"}  (${c.entryMode})"
+        }
+    }
+
+    private fun testScanner() = ensureCameraPermission {
+        runTest("Scan") { Terminal.services.scanner.scan() }
+    }
+
+    // ───────────── 2. Paramètres EMV → kernel L2 ─────────────
+
+    private fun testEmvParameters() = runPlain("Paramètres EMV → kernel L2") {
+        val pm = paymentManager ?: error("PaymentManager non initialisé")
+        val configurator = pm.emvKernelConfigurator
+        val params = EmvParametersManager(this@MainActivity, configurator)
+
+        // loadCapks() d'abord : il remplit ignoredCapks
+        val aids = params.loadAids()
+        val capks = params.loadCapks()
+        val terminal = params.loadTerminalParam()
+
+        val report = EmvKernelSelfCheck.run(
+            aids = aids,
+            capks = capks,
+            terminal = terminal,
+            configurator = configurator,
+            ignored = params.ignoredCapks
+        )
+        report.lines.forEach { log(it) }
+        check(report.passed) { "un ou plusieurs tests en échec (voir [FAIL])" }
+        "tous les tests OK"
+    }
+    private fun showEmvParameters() = runPlain("Afficher les paramètres EMV lus") {
+        val pm = paymentManager ?: error("PaymentManager non initialisé")
+        val params = EmvParametersManager(this@MainActivity, pm.emvKernelConfigurator)
+
+        val aids = params.loadAids()
+        val capks = params.loadCapks()
+        val terminal = params.loadTerminalParam()
+
+        aids.forEach {
+            log("AID ${it.aid} v${it.appVersion} TAC[den=${it.tacDenial} onl=${it.tacOnline} def=${it.tacDefault}] floor=${it.floorLimit}")
+        }
+        capks.forEach {
+            log("CAPK ${it.rid}/${it.index} mod=${it.modulus.length / 2}o exp=${it.exponent} date=${it.expireDate}")
+        }
+        log("TERMINAL capContact=${terminal.contactCapabilities} capCL=${terminal.contactlessCapabilities} TTQ=${terminal.contactlessTtq}")
+        "${aids.size} AID, ${capks.size} CAPK"
+    }
+
+    // ───────────── 3. Paiement EMV ─────────────
+
+    private fun startPayment() {
+        val pm = paymentManager ?: run { log("⚠ PaymentManager non initialisé"); return }
+        val amount = amountInput.text.toString().trim()
+        if (amount.isEmpty()) {
+            log("⚠ Saisis un montant (en centimes)")
+            return
+        }
+        log("▶ Paiement, montant = $amount")
+        try {
+            pm.startPayment(amount)
+        } catch (e: Exception) {
+            log("💥 startPayment : ${e.message}", e)
+        }
+    }
+    // ───────────── 4. PIN pad : briques communes ─────────────
+
+    private object TestKeys {
+        const val PAN = "4111111111111111"
+        const val TMK = "0123456789ABCDEFFEDCBA9876543210"
+        const val TMK_KCV = "08D7B4"
+        const val PIN_KEY_CLEAR = "11223344556677889900AABBCCDDEEFF"
+        const val PIN_KEY_UNDER_TMK = "3EB3B72576BBBE834F0B96AAA5A8B548"
+        const val PIN_KEY_KCV = "5ED7EA"
+        const val MASTER_INDEX = 1
+        const val PIN_INDEX = 1
+        const val TEST_PIN = "1234"
+
+    }
+
+    private suspend fun injectTestKeys(): TerminalResult<Unit> {
+        val pinPad = Terminal.services.pinPad
+        val master = pinPad.injectKey(
+            KeyInjection.ClearMasterForTest(
+                TestKeys.MASTER_INDEX, TestKeys.TMK.hexToBytes(), TestKeys.TMK_KCV.hexToBytes()
+            )
+        )
+        if (master is TerminalResult.Failure) return master
+        return pinPad.injectKey(
+            KeyInjection.UnderParent(
+                KeyKind.PIN, TestKeys.PIN_INDEX, TestKeys.MASTER_INDEX,
+                TestKeys.PIN_KEY_UNDER_TMK.hexToBytes(), TestKeys.PIN_KEY_KCV.hexToBytes()
+            )
+        )
+    }
+
+    private suspend fun pinTest(): TerminalResult<String> {
+        log("Réglages PIN : ${PinSdkOptions.describe()}")
+        val sessionId = CardSessionStore.put(TestKeys.PAN)
+        return Terminal.services.pinPad
+            .requestPin(PinRequest(sessionId = sessionId, pinKeyIndex = TestKeys.PIN_INDEX))
+            .map { verifyPinBlock(it) }
+    }
+
+    private fun verifyPinBlock(enc: EncryptedPin): String {
+        if (enc.block.size != 8) return "✖ bloc de ${enc.block.size} octets (8 attendus)"
+        val format = PinSdkOptions.forceFormat ?: enc.format
+
+        val key = TestKeys.PIN_KEY_CLEAR.hexToBytes()
+        val cipher = Cipher.getInstance("DESede/ECB/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key + key.copyOf(8), "DESede"))
+        val clear = cipher.doFinal(enc.block)
+
+        val field: ByteArray = if (format == PinBlockFormat.ISO_1) {
+            clear
+        } else {
+            val panField = ("0000" + TestKeys.PAN.dropLast(1).takeLast(12)).hexToBytes()
+            ByteArray(8) { (clear[it].toInt() xor panField[it].toInt()).toByte() }
         }
 
-        super.onDestroy()
+        val hex = field.toHex()
+        val expectedControl = when (format) {
+            PinBlockFormat.ISO_0 -> '0'
+            PinBlockFormat.ISO_1 -> '1'
+            PinBlockFormat.ISO_3 -> '3'
+        }
+        if (hex[0] != expectedControl) {
+            return "✖ champ de contrôle ${hex[0]} (attendu $expectedControl) : clé, PAN ou format différents"
+        }
+        val length = hex[1].digitToIntOrNull(16) ?: return "✖ bloc invalide (longueur illisible)"
+        if (length !in 4..12) return "✖ bloc invalide (longueur $length)"
+        val pin = hex.substring(2, 2 + length)
+        return if (pin == TestKeys.TEST_PIN) "bloc valide, PIN décodé conforme" else "✖ le PIN décodé ne correspond pas"
+    }
+
+    // ───────────── PIN pad : tests de base ─────────────
+
+    private fun testInjectKeys() = runTest("Injection clés de test") { injectTestKeys() }
+
+    private fun testPinWithTestPan() =
+        runTest("PIN : tape ${TestKeys.TEST_PIN} puis valide") { pinTest() }
+
+    private fun testInjectThenPin() = runTest("Injection + PIN : tape ${TestKeys.TEST_PIN}") {
+        PinSdkOptions.reset()
+        val injected = injectTestKeys()
+        if (injected is TerminalResult.Failure) return@runTest injected
+        pinTest()
+    }
+
+    private fun testPinRealCard() = runTest("PIN avec une carte de test") {
+        val card = Terminal.services.cardReader.readCard()
+        if (card !is TerminalResult.Success) return@runTest card
+        val sessionId = card.value.sessionId
+            ?: return@runTest TerminalResult.Failure(TerminalError.SessionExpired)
+        Terminal.services.pinPad.requestPin(PinRequest(sessionId = sessionId, pinKeyIndex = TestKeys.PIN_INDEX))
+    }
+
+    // ───────────── PIN pad : variantes ─────────────
+
+    private data class PinVariant(
+        val label: String,
+        val format: PinBlockFormat?,
+        val pan: PanMode,
+        val bytes: Boolean,
+    )
+
+    private val pinVariants = listOf(
+        PinVariant("ISO-1 (n'utilise pas le PAN)", PinBlockFormat.ISO_1, PanMode.FULL, false),
+        PinVariant("ISO-0, PAN en octets", null, PanMode.FULL, true),
+        PinVariant("ISO-0, PAN sans chiffre de contrôle (15)", null, PanMode.NO_CHECK, false),
+        PinVariant("ISO-0, PAN 12 chiffres", null, PanMode.ISO12, false),
+    )
+    private var pinVariantIndex = 0
+    private var algoModeIndex = 0
+
+    private fun testPinNextVariant() {
+        if (busy()) return
+        val v = pinVariants[pinVariantIndex % pinVariants.size]
+        pinVariantIndex++
+        PinSdkOptions.reset()
+        PinSdkOptions.forceFormat = v.format
+        PinSdkOptions.panMode = v.pan
+        PinSdkOptions.panAsBytes = v.bytes
+        log("Variante $pinVariantIndex/${pinVariants.size} : ${v.label}")
+        testPinWithTestPan()
+    }
+
+    private fun testPinNextAlgorithmMode() {
+        if (busy()) return
+        val names = SdkInspector.enumValuesOf(PIN_PAD_CLASS, "setAlgorithmMode")
+        if (names.isEmpty()) {
+            log("⚠ setAlgorithmMode introuvable")
+            return
+        }
+        val name = names[algoModeIndex % names.size]
+        algoModeIndex++
+        PinSdkOptions.reset()
+        PinSdkOptions.presets["setAlgorithmMode"] = name
+        log("Mode algorithme $algoModeIndex/${names.size} : $name")
+        runTest("Injection + PIN, setAlgorithmMode($name)") {
+            val injected = injectTestKeys()
+            if (injected is TerminalResult.Failure) return@runTest injected
+            pinTest()
+        }
+    }
+
+    private val lengthVariants = listOf(
+        listOf(4),
+        listOf(4, 5, 6),
+        listOf(0, 4, 5, 6, 7, 8, 9, 10, 11, 12),
+    )
+    private var lengthIndex = 0
+
+    private fun testPinNextLengths() {
+        if (busy()) return
+        val l = lengthVariants[lengthIndex % lengthVariants.size]
+        lengthIndex++
+        PinSdkOptions.reset()
+        PinSdkOptions.lengthOverride = l
+        log("Longueurs $lengthIndex/${lengthVariants.size} : $l")
+        testPinWithTestPan()
+    }
+
+    private val keyboardPresets = listOf(
+        "setPinKeyboardMode" to "FIXED",
+        "setPinKeyboardMode" to "RANDOM",
+        "setPinKeyboardViewMode" to "VIEW_1",
+        "setPinKeyboardClearMode" to "BACKSPACE",
+        "setPinKeyboardPinMaskMode" to "VISIBLE",
+        "setCipherMode" to "ECB",
+    )
+    private var keyboardIndex = 0
+
+    private fun testPinNextKeyboardSetting() {
+        if (busy()) return
+        val (method, value) = keyboardPresets[keyboardIndex % keyboardPresets.size]
+        keyboardIndex++
+        PinSdkOptions.reset()
+        PinSdkOptions.presets[method] = value
+        log("Réglage $keyboardIndex/${keyboardPresets.size} : $method($value)")
+        runTest("Injection + PIN, $method($value)") {
+            val injected = injectTestKeys()
+            if (injected is TerminalResult.Failure) return@runTest injected
+            pinTest()
+        }
+    }
+
+    private fun resetPinSettings() {
+        PinSdkOptions.reset()
+        lengthIndex = 0
+        keyboardIndex = 0
+        log("Réglages PIN réinitialisés : ${PinSdkOptions.describe()}")
+    }
+
+    // ───────────── 5. Diagnostic du SDK ─────────────
+
+    private fun diagnosticPinPadMethods() {
+        log("Diagnostic : méthodes et codes du PIN pad")
+        SdkInspector.dump(PIN_PAD_CLASS)
+        SdkInspector.dump("com.nexgo.oaf.apiv3.device.pinpad.PinAlgorithmModeEnum")
+        SdkInspector.dump("com.nexgo.oaf.apiv3.device.pinpad.WorkKeyTypeEnum")
+        SdkInspector.dump("com.nexgo.oaf.apiv3.SdkResult", constantPrefix = "PinPad")
+    }
+
+    private fun diagnosticPinPadSettings() {
+        log("Diagnostic : valeurs possibles des réglages du PIN pad")
+        SdkInspector.dumpSetterEnums(
+            PIN_PAD_CLASS,
+            listOf(
+                "setAlgorithmMode", "setCipherMode", "setPinKeyboardMode",
+                "setPinKeyboardViewMode", "setPinKeyboardClearMode", "setPinKeyboardPinMaskMode",
+            )
+        )
+    }
+    private fun cancelPayment() {
+        try {
+            paymentManager?.cancel()
+            log("⏹ Paiement annulé")
+        } catch (e: Exception) {
+            log("💥 cancel : ${e.message}", e)
+        }
+    }
+
+    // ───────────── Permission caméra ─────────────
+
+    private fun ensureCameraPermission(onGranted: () -> Unit) {
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            onGranted()
+        } else {
+            log("Permission caméra demandée")
+            pendingAfterPermission = onGranted
+            requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAMERA)
+        }
+    }
+
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, results: IntArray) {
+        super.onRequestPermissionsResult(code, perms, results)
+        if (code == REQ_CAMERA && results.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            pendingAfterPermission?.invoke()
+        } else {
+            log("✖ Permission caméra refusée")
+        }
+        pendingAfterPermission = null
+    }
+
+    // ───────────── Exécution commune ─────────────
+
+    private fun busy(): Boolean {
+        val running = job?.isActive == true
+        if (running) log("⚠ Une opération est déjà en cours : attends sa fin ou appuie sur Annuler")
+        return running
+    }
+
+    private fun cancelCurrent() {
+        if (job?.isActive == true) log("⏹ Annulation demandée") else log("Rien à annuler")
+        job?.cancel()
+        cancelPayment()
+    }
+
+    private fun <T> runTest(label: String, block: suspend () -> TerminalResult<T>) {
+        if (busy()) return
+        log("▶ $label")
+        setStatus("En cours : $label")
+        job = scope.launch {
+            val start = SystemClock.elapsedRealtime()
+            try {
+                val result = block()
+                val ms = SystemClock.elapsedRealtime() - start
+                when (result) {
+                    is TerminalResult.Success -> log("✔ $label (${ms} ms) : ${result.value}")
+                    is TerminalResult.Failure -> log("✖ $label (${ms} ms) : ${result.error}")
+                }
+            } catch (e: CancellationException) {
+                log("⏹ $label annulé après ${SystemClock.elapsedRealtime() - start} ms")
+                throw e
+            } catch (e: Throwable) {
+                log("💥 $label : ${e.javaClass.simpleName}: ${e.message}", e)
+            } finally {
+                resetStatus()
+            }
+        }
+    }
+
+    private fun runPlain(label: String, block: suspend () -> String) {
+        if (busy()) return
+        log("▶ $label")
+        setStatus("En cours : $label")
+        job = scope.launch {
+            val start = SystemClock.elapsedRealtime()
+            try {
+                val message = withContext(Dispatchers.IO) { block() }
+                log("✔ $label (${SystemClock.elapsedRealtime() - start} ms) : $message")
+            } catch (e: CancellationException) {
+                log("⏹ $label annulé")
+                throw e
+            } catch (e: Throwable) {
+                log("✖ $label : ${e.javaClass.simpleName}: ${e.message}", e)
+            } finally {
+                resetStatus()
+            }
+        }
+    }
+
+    private fun resetStatus() {
+        setStatus("Terminal : ${runCatching { Terminal.services.device }.getOrNull() ?: "?"}")
+    }
+
+    // ───────────── Journal (thread-safe) ─────────────
+
+    private fun log(msg: String, error: Throwable? = null) {
+        Log.i(TAG, msg, error)
+        if (msg.startsWith("[OK]") || msg.startsWith("[FAIL]") ||
+            msg.startsWith("[SKIP]") || msg.startsWith("===")
+        ) {
+            Log.d(EMV_TAG, msg)
+        }
+        appendLine("A  $msg")
+    }
+
+    private fun appendLine(text: String) {
+        runOnUiThread {
+            if (!::logView.isInitialized) return@runOnUiThread
+            logView.append("[${now()}] $text\n")
+            if (logView.length() > MAX_LOG_CHARS) {
+                logView.text = logView.text.takeLast(MAX_LOG_CHARS / 2)
+            }
+            logScroll.post { logScroll.fullScroll(View.FOCUS_DOWN) }
+        }
+    }
+
+    private fun setStatus(text: String) {
+        runOnUiThread { if (::statusView.isInitialized) statusView.text = text }
+    }
+
+    private fun copyLog() {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("journal", logView.text))
+        Toast.makeText(this, "Journal copié", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun clearLog() {
+        logView.text = ""
+    }
+
+    private fun now() = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
+
+    // ───────────── Interface ─────────────
+
+    private fun buildUi(): LinearLayout {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(16, 16, 16, 16)
+        }
+
+        statusView = TextView(this).apply {
+            textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            text = "Terminal : …"
+        }
+        root.addView(statusView)
+
+        val buttons = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        buttons.addView(section("1. Périphériques"))
+        buttons.addView(button("Imprimer un ticket test", ::testPrinter))
+        buttons.addView(button("Lire une carte (piste magnétique)", ::testCardReader))
+        buttons.addView(button("Scanner un code", ::testScanner))
+
+        buttons.addView(section("2. Paramètres EMV → kernel L2"))
+        buttons.addView(button("Envoyer au kernel L2 + auto-test", ::testEmvParameters))
+        buttons.addView(button("Afficher AID / CAPK lus", ::showEmvParameters))
+
+        buttons.addView(section("3. Paiement EMV"))
+        amountInput = EditText(this).apply {
+            hint = "Montant en centimes"
+            setText("1000")
+            inputType = InputType.TYPE_CLASS_NUMBER
+        }
+        buttons.addView(amountInput)
+        buttons.addView(button("Démarrer le paiement", ::startPayment))
+        buttons.addView(button("Annuler le paiement", ::cancelPayment))
+
+
+            buttons.addView(section("4. PIN pad : tests de base"))
+            buttons.addView(button("Injecter les clés de test", ::testInjectKeys))
+            buttons.addView(button("Saisie du PIN + vérification", ::testPinWithTestPan))
+            buttons.addView(button("Injection + saisie (tout-en-un)", ::testInjectThenPin))
+            buttons.addView(button("PIN avec une carte de test", ::testPinRealCard))
+
+            buttons.addView(section("5. PIN pad : variantes"))
+            buttons.addView(button("Longueurs de PIN suivantes", ::testPinNextLengths))
+            buttons.addView(button("Réglage clavier suivant", ::testPinNextKeyboardSetting))
+            buttons.addView(button("Variante PAN / format suivante", ::testPinNextVariant))
+            buttons.addView(button("Mode algorithme suivant", ::testPinNextAlgorithmMode))
+            buttons.addView(button("Réinitialiser les réglages PIN", ::resetPinSettings))
+
+            buttons.addView(section("6. Diagnostic (lecture seule)"))
+            buttons.addView(button("Réglages du PIN pad (valeurs)", ::diagnosticPinPadSettings))
+            buttons.addView(button("Méthodes et codes du PIN pad", ::diagnosticPinPadMethods))
+
+
+        root.addView(
+            ScrollView(this).apply { addView(buttons) },
+            LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f)
+        )
+
+        root.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(button("Annuler", ::cancelCurrent), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(button("Copier le journal", ::copyLog), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(button("Effacer", ::clearLog), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        })
+
+        logView = TextView(this).apply {
+            textSize = 12f
+            setTextIsSelectable(true)
+        }
+        logScroll = ScrollView(this).apply { addView(logView) }
+        root.addView(logScroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+        return root
+    }
+
+    private fun section(title: String) = TextView(this).apply {
+        text = title
+        textSize = 14f
+        setTypeface(typeface, Typeface.BOLD)
+        setPadding(0, 16, 0, 4)
+    }
+
+    private fun button(text: String, onClick: () -> Unit) = Button(this).apply {
+        this.text = text
+        layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+        setOnClickListener { onClick() }
     }
 }

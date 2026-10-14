@@ -4,7 +4,7 @@ package com.example.terminalmodule.internal
 import com.example.terminalmodule.model.PinBlockFormat
 import java.util.concurrent.ConcurrentHashMap
 
-internal enum class PanMode {
+ enum class PanMode {
     FULL,
     NO_CHECK,
     ISO12
@@ -15,7 +15,7 @@ internal enum class PanMode {
  *
  * Valeurs par défaut : comportement normal, sans surcharge expérimentale.
  */
-internal object PinSdkOptions {
+ object PinSdkOptions {
 
     @Volatile
     var forceFormat: PinBlockFormat? = null

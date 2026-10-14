@@ -3,7 +3,7 @@ package com.example.terminalmodule.internal
 import java.lang.reflect.Modifier
 
 /** Diagnostic par réflexion : aucune dépendance SDK à la compilation, aucune donnée sensible. */
-internal object SdkInspector {
+ object SdkInspector {
 
     /** Liste les constantes (filtrables par préfixe) ou les méthodes d'une classe. */
     fun dump(className: String, constantPrefix: String? = null) {

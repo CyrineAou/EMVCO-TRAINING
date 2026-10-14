@@ -1,0 +1,12 @@
+[
+  {
+    "rid": "A000000003",
+    "capkIdx": 146,
+    "hashInd": 1,
+    "arithInd": 1,
+    "modulus": "REMPLACER_PAR_LE_MODULUS_HEXA",
+    "exponent": "03",
+    "expireDate": "20301231",
+    "checkSum": "REMPLACER_PAR_LE_CHECKSUM_HEXA"
+  }
+]

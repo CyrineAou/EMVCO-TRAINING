@@ -2,7 +2,7 @@ package com.example.terminalmodule.internal
 
 import android.util.Log
 
-internal object TerminalLog {
+ object TerminalLog {
     private const val TAG = "TerminalTest"
 
     /** Activé par Terminal.init() uniquement si l'app est debuggable. */

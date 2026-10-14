@@ -31,4 +31,15 @@ object DataConverter {
             .map { it.toInt(2).toByte() }
             .toByteArray()
     }
+
+    fun String.hexToBytes(): ByteArray {
+        val s = this.replace(" ", "")
+        require(s.length % 2 == 0) { "Longueur hexa impaire" }
+        return ByteArray(s.length / 2) { i ->
+            s.substring(2 * i, 2 * i + 2).toInt(16).toByte()
+        }
+    }
+
+    fun ByteArray.toHex(): String =
+        joinToString("") { "%02X".format(it.toInt() and 0xFF) }
 }

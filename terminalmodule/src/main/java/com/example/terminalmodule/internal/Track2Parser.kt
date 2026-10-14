@@ -4,10 +4,10 @@ import com.example.terminalmodule.model.CardData
 import com.example.terminalmodule.model.EntryMode
 
 
-internal data class Track2(val pan: String, val expiryMmYy: String?)
+ data class Track2(val pan: String, val expiryMmYy: String?)
 
 /** Logique partagée par Pax et Nexgo : écrite une seule fois, testable sans terminal. */
-internal object Track2Parser {
+ object Track2Parser {
     fun parse(raw: String?): Track2? {
         if (raw.isNullOrBlank()) return null
         val s = raw.trim().removePrefix(";").removeSuffix("?")
@@ -21,11 +21,11 @@ internal object Track2Parser {
     }
 }
 
-internal object PanMasker {
+ object PanMasker {
     fun mask(pan: String): String =
         if (pan.length < 10) "*".repeat(pan.length)
         else pan.take(6) + "*".repeat(pan.length - 10) + pan.takeLast(4)
 }
 
-internal fun Track2.toCardData(mode: EntryMode = EntryMode.CONTACTLESS) =
+ fun Track2.toCardData(mode: EntryMode = EntryMode.CONTACTLESS) =
     CardData(PanMasker.mask(pan), expiryMmYy, holderName = null, entryMode = mode,   sessionId = CardSessionStore.put(pan),)

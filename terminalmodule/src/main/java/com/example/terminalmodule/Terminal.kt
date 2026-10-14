@@ -2,12 +2,17 @@ package com.example.terminalmodule
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import com.example.terminalmodule.api.EmvKernelConfigurator
 import com.example.terminalmodule.api.TerminalServices
 import com.example.terminalmodule.internal.TerminalFactory
 import com.example.terminalmodule.internal.TerminalLog
 
 object Terminal {
     @Volatile private var instance: TerminalServices? = null
+    val emvKernelConfigurator: EmvKernelConfigurator
+        get() {
+            TODO()
+        }
 
     val services: TerminalServices
         get() = checkNotNull(instance) { "Terminal.init(context) doit être appelé avant usage" }
