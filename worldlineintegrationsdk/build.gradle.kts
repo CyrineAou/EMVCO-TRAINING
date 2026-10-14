@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.android.application)
+    id("com.android.library")          // au lieu de libs.plugins.android.application
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
@@ -12,22 +12,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.worldlineintegrationsdk"
         minSdk = 25
-        targetSdk = 37
-
-        versionCode = 1
-        versionName = "1.0"
-
+        // supprimés : applicationId, targetSdk, versionCode, versionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    buildTypes {
-        release {
-            optimization {
-                enable = false
-            }
-        }
     }
 
     compileOptions {
@@ -127,7 +114,6 @@ dependencies {
     implementation(
         files("lib/validation-sdk-release_1.0.7_20260730.aar")
     )
-
 
     // --------------------------------------------------
     // Room Database

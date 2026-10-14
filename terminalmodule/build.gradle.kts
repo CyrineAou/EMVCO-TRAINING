@@ -58,7 +58,7 @@ dependencies {
     "paxImplementation"(
         files("libs/pax/NeptuneLiteApi_V4.20.00_20260108.jar")
     )
-
+    implementation(project(":worldlineintegrationsdk"))
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

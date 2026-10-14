@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.CLOUDPOS_MAG_CARD" />
     <uses-permission android:name="android.permission.CLOUDPOS_IC_CARD" />
     <uses-permission android:name="android.permission.CLOUDPOS_PINPAD" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

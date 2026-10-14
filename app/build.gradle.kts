@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -63,6 +64,26 @@ dependencies {
 
     // Terminal abstraction module (nexgo flavor chosen by missingDimensionStrategy)
     implementation(project(":terminalmodule"))
+    implementation(project(":worldlineintegrationsdk"))
+
+    // --------------------------------------------------
+    // Room Database
+    // --------------------------------------------------
+
+    val roomVersion = "2.8.4"
+
+    implementation(
+        "androidx.room:room-runtime:$roomVersion"
+    )
+
+    implementation(
+        "androidx.room:room-ktx:$roomVersion"
+    )
+
+    // Required to generate AppDatabase_Impl
+    ksp(
+        "androidx.room:room-compiler:$roomVersion"
+    )
 
     // Coroutines (needed by MainActivity and by the suspend functions of terminalmodule)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")

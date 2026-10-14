@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
 
         // Un seul format, utilisé dans la config ET dans le téléchargement.
         // POSIX et GNU ont tous deux échoué : le format n'est pas la cause.
-        private val ACQ_FORMAT = AcqFormat.GNU
+        val ACQ_FORMAT = AcqFormat.GNU
 
         // Attente max de l'archive après le téléchargement (il est asynchrone côté SDK).
         private const val ARCHIVE_WAIT_MS = 15_000L

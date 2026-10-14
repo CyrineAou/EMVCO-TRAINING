@@ -25,12 +25,17 @@ import android.widget.TextView
 import android.widget.Toast
 import com.example.nexgointegration.gateway.FakePaymentGateway
 import com.example.nexgointegration.parameters.EmvKernelSelfCheck
+import com.example.nexgointegration.parameters.WorldlineEmvParametersProvider
 import com.example.terminalmodule.Terminal
 import com.example.terminalmodule.internal.CardSessionStore
 import com.example.terminalmodule.internal.PanMode
 import com.example.terminalmodule.internal.PinSdkOptions
 import com.example.terminalmodule.internal.SdkInspector
 import com.example.terminalmodule.model.*
+import com.example.worldlineintegrationsdk.FakeWorldlineSdk
+import com.example.worldlineintegrationsdk.WorldlineSync
+import com.example.worldlineintegrationsdk.dispatcher.SdkTableDispatcher
+import com.example.worldlineintegrationsdk.sdk.SdkTableAdapter
 import com.nexgo.oaf.apiv3.device.reader.CardInfoEntity
 import com.nexgo.oaf.apiv3.emv.EmvProcessResultEntity
 import kotlinx.coroutines.*
@@ -70,7 +75,12 @@ class MainActivity : Activity() {
         Log.d(EMV_TAG, ">>> MainActivity started")
         log("Démarrage")
         initTerminal()
-        initPayment()
+        // dans MainActivity, à la place de l'appel direct à initPayment() dans onCreate :
+        scope.launch {
+            WorldlineSync(applicationContext).run()
+                .onFailure { log("✖ Worldline sync: ${it.message}", it) }
+            initPayment()
+        }
     }
 
     override fun onDestroy() {
@@ -101,7 +111,8 @@ class MainActivity : Activity() {
         try {
             paymentManager = PaymentManager(
                 context = this,
-                paymentGateway = FakePaymentGateway(),
+                parametersProvider = WorldlineEmvParametersProvider(this),   // → WorldlineEmvParametersProvider(this)
+                authorizer = GatewayOnlineAuthorizer(FakePaymentGateway()),
                 listener = object : PaymentManager.Listener {
 
                     override fun onWaitingForCard() {
@@ -109,18 +120,14 @@ class MainActivity : Activity() {
                         setStatus("Présente ou insère la carte...")
                     }
 
-                    override fun onCardDetected(cardInfo: CardInfoEntity) {
-                        log("[CARD] Carte détectée, slot = ${cardInfo.cardExistslot}")
+                    override fun onCardDetected(entryMode: EmvEntryMode) {
+                        log("[CARD] Carte détectée : $entryMode")
                     }
 
-                    override fun onTransactionFinished(
-                        result: Int,
-                        resultEntity: EmvProcessResultEntity?
-                    ) {
-                        log(
-                            if (result == 0) "✔ [EMV] Transaction acceptée (code $result)"
-                            else "✖ [EMV] Transaction échouée (code $result)"
-                        )
+                    override fun onTransactionFinished(result: EmvPaymentResult) {
+                        log(if (result.approved) "✔ [EMV] Acceptée (code ${result.code})"
+                        else "✖ [EMV] Échec (code ${result.code})")
+                        log("[EMV] TVR(95)=${result.tags["95"]} TSI(9B)=${result.tags["9B"]}")
                         setStatus("Terminal : prêt")
                     }
 
@@ -130,7 +137,7 @@ class MainActivity : Activity() {
                     }
                 }
             )
-            log("PaymentManager initialisé (paramètres EMV envoyés au kernel L2)")
+            log("PaymentManager initialisé")
         } catch (e: Throwable) {
             log("💥 PaymentManager : ${e.javaClass.simpleName}: ${e.message}", e)
         }
@@ -162,32 +169,26 @@ class MainActivity : Activity() {
 
     private fun testEmvParameters() = runPlain("Paramètres EMV → kernel L2") {
         val pm = paymentManager ?: error("PaymentManager non initialisé")
-        val configurator = pm.emvKernelConfigurator
-        val params = EmvParametersManager(this@MainActivity, configurator)
-
-        // loadCapks() d'abord : il remplit ignoredCapks
-        val aids = params.loadAids()
-        val capks = params.loadCapks()
-        val terminal = params.loadTerminalParam()
+        val provider = pm.parametersProvider
 
         val report = EmvKernelSelfCheck.run(
-            aids = aids,
-            capks = capks,
-            terminal = terminal,
-            configurator = configurator,
-            ignored = params.ignoredCapks
+            aids = provider.getAids(),
+            capks = provider.getCapks(),
+            terminal = provider.getTerminalParam(),
+            configurator = pm.emvKernelConfigurator,
+            ignored = provider.ignoredCapks
         )
         report.lines.forEach { log(it) }
         check(report.passed) { "un ou plusieurs tests en échec (voir [FAIL])" }
         "tous les tests OK"
     }
-    private fun showEmvParameters() = runPlain("Afficher les paramètres EMV lus") {
-        val pm = paymentManager ?: error("PaymentManager non initialisé")
-        val params = EmvParametersManager(this@MainActivity, pm.emvKernelConfigurator)
 
-        val aids = params.loadAids()
-        val capks = params.loadCapks()
-        val terminal = params.loadTerminalParam()
+    private fun showEmvParameters() = runPlain("Afficher les paramètres EMV lus") {
+        val provider = (paymentManager ?: error("PaymentManager non initialisé")).parametersProvider
+
+        val aids = provider.getAids()
+        val capks = provider.getCapks()
+        val terminal = provider.getTerminalParam()
 
         aids.forEach {
             log("AID ${it.aid} v${it.appVersion} TAC[den=${it.tacDenial} onl=${it.tacOnline} def=${it.tacDefault}] floor=${it.floorLimit}")

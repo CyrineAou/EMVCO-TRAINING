@@ -11,7 +11,7 @@ import com.nexgo.oaf.apiv3.emv.CapkEntity
 import com.nexgo.oaf.apiv3.emv.EmvHandler2
 
 internal class NexgoEmvConfigurator(
-    private val emvHandler: EmvHandler2
+     val emvHandler: EmvHandler2
 ) : EmvKernelConfigurator {
 
     companion object {
