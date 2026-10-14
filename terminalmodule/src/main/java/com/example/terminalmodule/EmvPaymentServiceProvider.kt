@@ -1,3 +1,4 @@
+
 package com.example.terminalmodule
 
 import android.content.Context
@@ -15,12 +16,21 @@ object EmvPaymentServiceProvider {
     fun create(context: Context): EmvPaymentService {
         instance?.let { return it }
 
-        // Même EmvHandler2 que celui qui reçoit les paramètres
-        val configurator = EmvKernelConfiguratorProvider.create(context) as NexgoEmvConfigurator
-        val deviceEngine = APIProxy.getDeviceEngine(context.applicationContext)
+        val appContext = context.applicationContext
+
+        // Réutilise le configurateur et le même EmvHandler2.
+        val configurator =
+            EmvKernelConfiguratorProvider.create(appContext) as NexgoEmvConfigurator
+
+        val deviceEngine = APIProxy.getDeviceEngine(appContext)
 
         val service: EmvPaymentService =
-            NexgoEmvPaymentService(deviceEngine, configurator.emvHandler, configurator)
+            NexgoEmvPaymentService(
+                deviceEngine,
+                configurator.emvHandler,
+                configurator
+            )
+
         instance = service
         return service
     }

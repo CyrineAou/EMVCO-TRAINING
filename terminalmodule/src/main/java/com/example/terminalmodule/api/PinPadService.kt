@@ -6,3 +6,4 @@ interface PinPadService {
     suspend fun injectKey(injection: KeyInjection): TerminalResult<Unit>
     suspend fun requestPin(request: PinRequest): TerminalResult<EncryptedPin>
 }
+
