@@ -9,18 +9,32 @@ import com.nexgo.libpboc.ByteUtils
 import com.nexgo.oaf.apiv3.emv.AidEntity
 import com.nexgo.oaf.apiv3.emv.CapkEntity
 import com.nexgo.oaf.apiv3.emv.EmvHandler2
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 internal class NexgoEmvConfigurator(
-     val emvHandler: EmvHandler2
+    val emvHandler: EmvHandler2
 ) : EmvKernelConfigurator {
 
     companion object {
         private const val TAG = "EMV_PARAMS"
         private const val TAG_KERNEL = "EMV_KERNEL"
+
+        /** 9F35 : 22 = terminal attended, offline avec capacité online. Adapter selon Worldline (21 = online seulement). */
+        private const val TERMINAL_TYPE = "22"
     }
 
     @Volatile
     var terminalParam: EmvTerminalParam? = null
+        private set
+
+    /**
+     * Valeurs terminal posées pour la transaction courante.
+     * Utilisées en repli si le kernel ne les renvoie pas via getTlvByTags.
+     */
+    @Volatile
+    var injectedTags: Map<String, String> = emptyMap()
         private set
 
     override fun loadParameters(
@@ -104,15 +118,44 @@ internal class NexgoEmvConfigurator(
         Unit
     }.onFailure { Log.e(TAG, "NexGo : échec chargement", it) }
 
-    /** Pose 9F33 et 9F66 pour la transaction. */
-    fun applyTerminalTlv(contactless: Boolean) {
+    /**
+     * Pose les données terminal pour la transaction : 9F33, 9F66, 9F1E, 9F35, 9F21.
+     * À appeler à CHAQUE transaction, avant emvProcess et dans onTransInitBeforeGPO.
+     *
+     * @param terminalSerial numéro de série du terminal (deviceEngine.deviceInfo.sn)
+     */
+    fun applyTerminalTlv(contactless: Boolean, terminalSerial: String? = null) {
         val p = terminalParam ?: return
+
         if (contactless) {
             emvHandler.setTlv(hex("9F33"), hex(p.contactlessCapabilities))
             emvHandler.setTlv(hex("9F66"), hex(p.contactlessTtq))
         } else {
             emvHandler.setTlv(hex("9F33"), hex(p.contactCapabilities))
         }
+
+        // 9F1E : Interface Device Serial Number, 8 caractères ASCII
+        val serial = terminalSerial.orEmpty()
+            .filter { it.isLetterOrDigit() }
+            .padStart(8, '0')
+            .takeLast(8)
+        val serialBytes = serial.toByteArray(Charsets.US_ASCII)
+        emvHandler.setTlv(hex("9F1E"), serialBytes)
+
+        // 9F35 : Terminal Type
+        emvHandler.setTlv(hex("9F35"), hex(TERMINAL_TYPE))
+
+        // 9F21 : heure de la transaction HHMMSS (BCD, 3 octets)
+        val time = SimpleDateFormat("HHmmss", Locale.US).format(Date())
+        emvHandler.setTlv(hex("9F21"), hex(time))
+
+        injectedTags = mapOf(
+            "9F1E" to ByteUtils.byteArray2HexString(serialBytes).uppercase(),
+            "9F35" to TERMINAL_TYPE,
+            "9F21" to time
+        )
+
+        Log.d(TAG_KERNEL, "TLV terminal posés : 9F1E=$serial 9F35=$TERMINAL_TYPE 9F21=$time")
     }
 
     // ---------------- Relecture du kernel ----------------

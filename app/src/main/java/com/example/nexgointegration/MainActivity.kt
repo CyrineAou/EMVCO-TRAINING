@@ -33,6 +33,7 @@ import com.example.terminalmodule.internal.PinSdkOptions
 import com.example.terminalmodule.internal.SdkInspector
 import com.example.terminalmodule.model.*
 import com.example.worldlineintegrationsdk.WorldlineSync
+import com.magellan.tapandgo.validatorsdk.T2UOpenPaymentSDK.sendWaitingTaps
 import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -142,11 +143,9 @@ class MainActivity : Activity() {
                 listener = object : PaymentManager.Listener {
 
                     override fun onWaitingForCard() {
-                        paymentCallback(
-                            "WAITING_FOR_CARD",
-                            "En attente de présentation de la carte"
-                        )
-                        setStatus("Présente ou insère la carte")
+                        paymentCallback("MANAGER_INITIALIZED",
+                            "PaymentManager initialisé")
+                        setStatus("Prêt : tu peux démarrer le paiement")
                     }
 
                     override fun onCardDetected(entryMode: EmvEntryMode) {
@@ -161,31 +160,24 @@ class MainActivity : Activity() {
                     }
 
                     override fun onTransactionFinished(result: EmvPaymentResult) {
+                        val info = EmvRequestedInfoMapper.build(
+                            result,
+                            (paymentManager ?: return).parametersProvider.getAids()
+                        )
                         val duration = elapsedPaymentMs()
                         paymentInProgress = false
 
-                        val state = if (result.approved) {
-                            "APPROVED"
-                        } else {
-                            "DECLINED_OR_FAILED"
-                        }
+                        val state = if (result.approved) "APPROVED" else "DECLINED_OR_FAILED"
 
-                        fun getEmvTag(
-                            tags: Map<String, String>,
-                            tag: String
-                        ): String? {
-                            return tags.entries
+                        fun getEmvTag(tags: Map<String, String>, tag: String): String? =
+                            tags.entries
                                 .firstOrNull { it.key.equals(tag, ignoreCase = true) }
                                 ?.value
                                 ?.takeIf { it.isNotBlank() }
-                        }
-
                         fun maskPan(pan: String?): String {
                             if (pan.isNullOrBlank()) return "Non disponible"
-
                             val digits = pan.filter { it.isDigit() }
                             if (digits.length < 10) return "Donnée masquée"
-
                             return "${digits.take(6)}******${digits.takeLast(4)}"
                         }
 
@@ -193,32 +185,23 @@ class MainActivity : Activity() {
                             fun value(tag: String): String =
                                 getEmvTag(tags, tag) ?: "Non disponible"
 
-                            val pan = value("5A")
-                                .replace("F", "", ignoreCase = true)
-                                .replace(" ", "")
-
-                            // 9F21 doit provenir des tags réellement renvoyés par le kernel.
-                            val transactionTime = value("9F21")
+                            // 5A est maintenant fourni par le service (kernel, ou dérivé du Track 2)
+                            val pan = getEmvTag(tags, "5A")?.replace("F", "", ignoreCase = true)
 
                             Log.i("WORLDLINE_EMV", "========== DONNÉES EMV ==========")
-                            Log.i(
-                                "WORLDLINE_EMV",
-                                "PAN = ${maskPan(pan.takeIf { it != "Non disponible" })}"
-                            )
-
+                            Log.i("WORLDLINE_EMV", "PAN = ${maskPan(pan)}")
                             Log.i("WORLDLINE_EMV", "transactionDate (9A) = ${value("9A")}")
-                            Log.i("WORLDLINE_EMV", "transactionTime (9F21) = $transactionTime")
-
+                            Log.i("WORLDLINE_EMV", "transactionTime (9F21) = ${value("9F21")}")
                             Log.i(
                                 "WORLDLINE_EMV",
                                 "track2 (57) = ${
-                                    if (getEmvTag(tags, "57") != null)
-                                        "Disponible (masqué)"
-                                    else
-                                        "Non disponible"
+                                    if (getEmvTag(
+                                            tags,
+                                            "57"
+                                        ) != null
+                                    ) "Disponible (masqué)" else "Non disponible"
                                 }"
                             )
-
                             Log.i("WORLDLINE_EMV", "cardSequenceNumber (5F34) = ${value("5F34")}")
                             Log.i("WORLDLINE_EMV", "otherAmount (9F03) = ${value("9F03")}")
                             Log.i("WORLDLINE_EMV", "terminalCapabilities (9F33) = ${value("9F33")}")
@@ -240,18 +223,18 @@ class MainActivity : Activity() {
                             Log.i("WORLDLINE_EMV", "CVMResults (9F34) = ${value("9F34")}")
                             Log.i("WORLDLINE_EMV", "TTQ (9F66) = ${value("9F66")}")
                             Log.i("WORLDLINE_EMV", "formFactorIndicator (9F6E) = ${value("9F6E")}")
-                            Log.i("WORLDLINE_EMV", "applicationUsageControl (9F07) = ${value("9F07")}")
-
+                            Log.i(
+                                "WORLDLINE_EMV",
+                                "applicationUsageControl (9F07) = ${value("9F07")}"
+                            )
                             Log.i("WORLDLINE_EMV", "Tags reçus = ${tags.keys.joinToString(", ")}")
                             Log.i("WORLDLINE_EMV", "=================================")
                         }
-
-                        // IMPORTANT : appeler la fonction, sinon aucun de ces logs ne s'affiche.
+                        Log.i("WORLDLINE_EMV", "RÉSULTAT code=${result.code} approved=${result.approved} mode=${lastEntryMode ?: "inconnu"}")
+                        // UN SEUL appel (l'ancien code l'appelait deux fois)
                         logEmvRequestedInfo(result.tags)
 
-
-                        // Afficher les tags EMV disponibles après la transaction.
-                        logEmvRequestedInfo(result.tags)
+                        callSendWaitingTaps("fin de paiement, code=${result.code}, approved=${result.approved}")
 
                         // Conserver le résultat pour consultation ultérieure.
                         lastPaymentSummary = buildString {
@@ -291,6 +274,22 @@ class MainActivity : Activity() {
                                 "Paiement terminé : refusé ou échoué"
                             }
                         )
+
+                        scope.launch {
+                            val start = SystemClock.elapsedRealtime()
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    sendWaitingTaps()   // à remplacer par ton instance de T2UOpenPaymentSDK
+                                }
+                                val ms = SystemClock.elapsedRealtime() - start
+                                paymentCallback("WAITING_TAPS", "sendWaitingTaps terminé sans exception (${ms} ms)")
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Throwable) {
+                                paymentCallback("WAITING_TAPS_ERROR", "${e.javaClass.simpleName}: ${e.message}")
+                                log("sendWaitingTaps a échoué : ${e.message}", e)
+                            }
+                        }
                     }
 
                     override fun onError(message: String) {
@@ -957,7 +956,28 @@ class MainActivity : Activity() {
                     (runCatching { Terminal.services.device }.getOrNull() ?: "?")
         )
     }
+    private fun callSendWaitingTaps(reason: String) {
+        scope.launch {
+            val start = SystemClock.elapsedRealtime()
+            Log.i("WORLDLINE_EMV", "sendWaitingTaps : appel ($reason)")
+            log("sendWaitingTaps : appel ($reason)")
 
+            try {
+                withContext(Dispatchers.IO) {
+                    sendWaitingTaps()
+                }
+                val ms = SystemClock.elapsedRealtime() - start
+                Log.i("WORLDLINE_EMV", "sendWaitingTaps : terminé sans exception (${ms} ms)")
+                log("sendWaitingTaps : terminé sans exception (${ms} ms)")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                val ms = SystemClock.elapsedRealtime() - start
+                Log.e("WORLDLINE_EMV", "sendWaitingTaps : ÉCHEC après ${ms} ms", e)
+                log("sendWaitingTaps : ÉCHEC ${e.javaClass.simpleName}: ${e.message}", e)
+            }
+        }
+    }
     // ---------------------------------------------------------
     // Journal
     // ---------------------------------------------------------
@@ -1017,6 +1037,10 @@ class MainActivity : Activity() {
     private fun now(): String =
         SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
             .format(Date())
+
+    private fun diagnosticEmvCodes() {
+        SdkInspector.dump("com.nexgo.oaf.apiv3.SdkResult")
+    }
 
     // ---------------------------------------------------------
     // Interface
@@ -1083,6 +1107,7 @@ class MainActivity : Activity() {
         buttons.addView(section("6. Diagnostic"))
         buttons.addView(button("Réglages du PIN pad", ::diagnosticPinPadSettings))
         buttons.addView(button("Méthodes et codes du PIN pad", ::diagnosticPinPadMethods))
+        buttons.addView(button("Codes SDK Nexgo", ::diagnosticEmvCodes))
 
         root.addView(
             ScrollView(this).apply { addView(buttons) },
