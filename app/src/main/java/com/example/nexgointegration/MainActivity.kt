@@ -6,6 +6,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.os.Build
@@ -1108,6 +1109,13 @@ class MainActivity : Activity() {
         buttons.addView(button("Réglages du PIN pad", ::diagnosticPinPadSettings))
         buttons.addView(button("Méthodes et codes du PIN pad", ::diagnosticPinPadMethods))
         buttons.addView(button("Codes SDK Nexgo", ::diagnosticEmvCodes))
+
+        buttons.addView(section("0. Écran de paiement"))
+        buttons.addView(
+            button("Ouvrir l'écran de paiement (100)") {
+                startActivity(Intent(this, PaymentActivity::class.java))
+            }
+        )
 
         root.addView(
             ScrollView(this).apply { addView(buttons) },
