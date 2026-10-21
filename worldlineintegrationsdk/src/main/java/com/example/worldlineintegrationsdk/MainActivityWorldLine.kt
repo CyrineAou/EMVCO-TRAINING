@@ -23,7 +23,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 
-class MainActivity : ComponentActivity() {
+class MainActivityWorldLine : ComponentActivity() {
 
     companion object {
         private const val TAG = "WorldlineTest"

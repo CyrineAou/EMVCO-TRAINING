@@ -22,7 +22,7 @@
         android:theme="@style/Theme.NexGoIntegration">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".MainActivityWorldLine"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.NexGoIntegration"

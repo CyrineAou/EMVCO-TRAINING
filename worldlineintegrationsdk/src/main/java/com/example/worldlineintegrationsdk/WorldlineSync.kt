@@ -131,7 +131,7 @@ class WorldlineSync(private val context: Context) {
             "2.0.0",
             Build.SERIAL,
             "199671801915",
-            MainActivity.ACQ_FORMAT,
+            MainActivityWorldLine.ACQ_FORMAT,
             "https://keycloak-t2u-demo.apps.dev.caas4noprd.worldline-solutions.com",
             "demoplatformAdmin",
             "control-app",
